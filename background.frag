@@ -8,6 +8,18 @@ layout(push_constant) uniform Push {
 	float time;
 };
 
+bool heart(vec2 p) {
+	float x = (p.x - 0.5) / 0.1;
+	float y = -(p.y - 0.5) / 0.1;
+	//return abs(x) <= 0.2;
+	return (pow(x * x + y * y - 1, 3.0) - x * x * y * y * y) <= 0;
+}
+
 void main() {
-	outColor = vec4(fract(position.x + time), position.y, 0.0, 1.0);
+    if (heart(position)) {
+		outColor = vec4(0.5 + 0.5 * cos(position.x * time), 0.5 + 0.5 * sin(position.y * time), 0.2, 1.0);
+	}
+	else {
+		outColor = vec4(1.0, 1.0, 1.0, 1.0);
+	}
 }
