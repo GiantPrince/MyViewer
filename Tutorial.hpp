@@ -20,7 +20,21 @@ struct Tutorial : RTG::Application {
 	VkRenderPass render_pass = VK_NULL_HANDLE;
 
 	//Pipelines:
-	//none, yet
+	struct BackgroundPipeline {
+		// no descriptor sets
+
+		struct Push {
+			float time;
+		};
+
+		VkPipelineLayout layout = VK_NULL_HANDLE;
+
+		// no vertex bindings
+
+		VkPipeline handle = VK_NULL_HANDLE;
+		void create(RTG&, VkRenderPass, uint32_t subpass);
+		void destroy(RTG&);
+	} background_pipeline;
 
 	//pools from which per-workspace things are allocated:
 	VkCommandPool command_pool = VK_NULL_HANDLE;
@@ -51,6 +65,8 @@ struct Tutorial : RTG::Application {
 
 	virtual void update(float dt) override;
 	virtual void on_input(InputEvent const &) override;
+
+	float time = 0.0f;
 
 	//--------------------------------------------------------------------
 	//Rendering function, uses all the resources above to queue work to draw a frame:

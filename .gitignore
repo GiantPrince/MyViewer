@@ -4,3 +4,7 @@ spv/
 bin/main
 bin/main.exe
 bin/main.pdb
+.vs
+img/
+CppProperties.json
+glfw-3.4.bin.WIN64/

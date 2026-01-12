@@ -37,11 +37,11 @@ const main_objs = [
 // it returns the path to the output .inl file
 
 //uncomment to build background shaders and pipeline:
-//const background_shaders = [
-//	maek.GLSLC('background.vert'),
-//	maek.GLSLC('background.frag'),
-//];
-//main_objs.push( maek.CPP('Tutorial-BackgroundPipeline.cpp', undefined, { depends:[...background_shaders] } ) );
+const background_shaders = [
+	maek.GLSLC('background.vert'),
+	maek.GLSLC('background.frag'),
+];
+main_objs.push( maek.CPP('Tutorial-BackgroundPipeline.cpp', undefined, { depends:[...background_shaders] } ) );
 
 //uncomment to build lines shaders and pipeline:
 //const lines_shaders = [
@@ -118,14 +118,14 @@ function custom_flags_and_rules() {
 			'/wd4201', //nameless struct/union
 			'/wd4146', //-1U is unsigned
 			`/I${VULKAN_SDK}/Include`,
-			`/I../glfw-3.4.bin.WIN64/include`,
+			`/I./glfw-3.4.bin.WIN64/include`,
 		];
 
 		maek.options.LINKLibs = [
 			'User32.lib',
 			`/LIBPATH:${VULKAN_SDK}/Lib`,
 			'vulkan-1.lib',
-			`/LIBPATH:../glfw-3.4.bin.WIN64/lib-vc2022`,
+			`/LIBPATH:./glfw-3.4.bin.WIN64/lib-vc2022`,
 			'glfw3.lib',
 			'gdi32.lib',
 			'Shell32.lib'
