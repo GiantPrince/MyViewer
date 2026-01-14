@@ -2,6 +2,9 @@
 
 #include "RTG.hpp"
 
+#include "PosColVertex.hpp"
+#include "mat4.hpp"
+
 struct Tutorial : RTG::Application {
 
 	Tutorial(RTG &);
@@ -44,6 +47,7 @@ struct Tutorial : RTG::Application {
 		VkPipelineLayout layout = VK_NULL_HANDLE;
 
 		// no vertex bindings
+		using Vertex = PosColVertex;
 
 		VkPipeline handle = VK_NULL_HANDLE;
 
@@ -58,6 +62,9 @@ struct Tutorial : RTG::Application {
 	struct Workspace {
 		VkCommandBuffer command_buffer = VK_NULL_HANDLE; //from the command pool above; reset at the start of every render.
 
+		// location for lines data 
+		Helpers::AllocatedBuffer line_vertices_src; // host coherent
+		Helpers::AllocatedBuffer line_vertices;		// device local
 	};
 	std::vector< Workspace > workspaces;
 
@@ -82,6 +89,10 @@ struct Tutorial : RTG::Application {
 	virtual void on_input(InputEvent const &) override;
 
 	float time = 0.0f;
+
+	mat4 CLIP_FROM_WORLD;
+
+	std::vector<LinesPipeline::Vertex> lines_vertices;
 
 	//--------------------------------------------------------------------
 	//Rendering function, uses all the resources above to queue work to draw a frame:

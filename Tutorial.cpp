@@ -13,7 +13,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 	refsol::Tutorial_constructor(rtg, &depth_format, &render_pass, &command_pool);
 
 	background_pipeline.create(rtg, render_pass, 0);
-	//lines_pipeline.create(rtg, render_pass, 0);
+	lines_pipeline.create(rtg, render_pass, 0);
 
 	workspaces.resize(rtg.workspaces.size());
 	for (Workspace &workspace : workspaces) {
@@ -34,11 +34,19 @@ Tutorial::~Tutorial() {
 
 	for (Workspace &workspace : workspaces) {
 		refsol::Tutorial_destructor_workspace(rtg, command_pool, &workspace.command_buffer);
+
+		if (workspace.line_vertices_src.handle != VK_NULL_HANDLE) {
+			rtg.helpers.destroy_buffer(std::move(workspace.line_vertices_src));
+		}
+
+		if (workspace.line_vertices.handle != VK_NULL_HANDLE) {
+			rtg.helpers.destroy_buffer(std::move(workspace.line_vertices));
+		}
 	}
 	workspaces.clear();
 
 	background_pipeline.destroy(rtg);
-	//lines_pipeline.destroy(rtg);
+	lines_pipeline.destroy(rtg);
 
 	refsol::Tutorial_destructor(rtg, &render_pass, &command_pool);
 }
@@ -58,7 +66,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 	assert(&rtg == &rtg_);
 	assert(render_params.workspace_index < workspaces.size());
 	assert(render_params.image_index < swapchain_framebuffers.size());
-
+	
 	//get more convenient names for the current workspace and target framebuffer:
 	Workspace &workspace = workspaces[render_params.workspace_index];
 	VkFramebuffer framebuffer = swapchain_framebuffers[render_params.image_index];
@@ -76,6 +84,72 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
 		};
 		VK(vkBeginCommandBuffer(workspace.command_buffer, &commandBufferBeginInfo));
+	}
+
+	if (!lines_vertices.empty()) {
+		// realloc buffers if needed
+		size_t needed_bytes = lines_vertices.size() * sizeof(lines_vertices[0]);
+		if (workspace.line_vertices_src.handle == VK_NULL_HANDLE || workspace.line_vertices_src.size < needed_bytes) {
+			size_t new_bytes = (needed_bytes + 4096) / 4096 * 4096; 			
+			
+			if (workspace.line_vertices_src.handle != VK_NULL_HANDLE) {
+				rtg.helpers.destroy_buffer(std::move(workspace.line_vertices_src));
+			}
+			if (workspace.line_vertices.handle != VK_NULL_HANDLE) {
+				rtg.helpers.destroy_buffer(std::move(workspace.line_vertices));
+			}
+
+			workspace.line_vertices_src = rtg.helpers.create_buffer(
+				new_bytes,
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+				Helpers::Mapped
+			);
+
+			workspace.line_vertices = rtg.helpers.create_buffer(
+				new_bytes,
+				VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				Helpers::Unmapped
+			);
+
+			std::cout << "Re-allocated lines buffers to " << new_bytes << std::endl;
+
+		}
+
+		assert(workspace.line_vertices_src.size == workspace.line_vertices.size);
+		assert(workspace.line_vertices_src.size >= needed_bytes);
+
+		assert(workspace.line_vertices_src.allocation.mapped);
+		std::memcpy(workspace.line_vertices_src.allocation.data(), lines_vertices.data(), needed_bytes);
+
+		VkBufferCopy copy_region{
+			.srcOffset = 0,
+			.dstOffset = 0,
+			.size = needed_bytes
+		};
+
+		vkCmdCopyBuffer(workspace.command_buffer, workspace.line_vertices_src.handle, workspace.line_vertices.handle, 1, &copy_region);
+
+		{
+			VkMemoryBarrier memory_barrier{
+				.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+				.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+				.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT
+			};
+
+			vkCmdPipelineBarrier(
+				workspace.command_buffer,
+				VK_PIPELINE_STAGE_TRANSFER_BIT,
+				VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+				0,
+				1, &memory_barrier,//memoryBarriers (count, data)
+				0, nullptr,//bufferBarriers (count, data)
+				0, nullptr//imageBarriers (count, data)
+			);
+		}
+
+
 	}
 
 	//render pass
@@ -130,6 +204,17 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
 		}
 
+		{
+			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lines_pipeline.handle);
+			{
+				std::array<VkBuffer, 1> vertex_buffers{ workspace.line_vertices.handle };
+				std::array<VkDeviceSize, 1> offsets{ 0 };
+				vkCmdBindVertexBuffers(workspace.command_buffer, 0, uint32_t(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
+				vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
+
+			}
+		}
+
 		vkCmdEndRenderPass(workspace.command_buffer);
 	}
 
@@ -142,6 +227,83 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 
 void Tutorial::update(float dt) {
 	time += dt;
+
+	{
+		float ang = float(M_PI) * 2.0f * 20.0f * (time / 60.0f);
+		CLIP_FROM_WORLD = perspective(
+			60.0f * float(M_PI) / 180.0f,
+			rtg.swapchain_extent.width / float(rtg.swapchain_extent.height),
+			0.1f,
+			1000.0f
+		) * look_at(
+			3.0f * std::cos(ang), 3.0f * std::sin(ang), 1.0f,
+			0.0f, 0.0f, 0.5f,
+			0.0f, 0.0f, 1.0f
+		);
+
+	}
+	lines_vertices.clear();	
+	constexpr size_t count = 2 * 50 + 2 * 50;
+	lines_vertices.reserve(count);
+
+	for (uint32_t i = 0; i < 50; ++i) {
+		float y = (i + 0.5f) / 50.0f * 2.0f - 1.0f;
+		float z = 0.5f + 0.5f * std::cos(5 * time + (i + 0.5f) / 50.0f);
+		if (i % 2 == 0) {
+			lines_vertices.emplace_back(PosColVertex{
+			.Position{.x = -1.0f, .y = y, .z = z},
+			.Color{.r = 0xff, .g = 0xff, .b = 0xff, .a = 0xff},
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position{.x = 1.0f, .y = y, .z = z },
+				.Color{.r = 0xff, .g = 0xff, .b = 0xff, .a = 0xff},
+				});
+		}
+		else {
+			lines_vertices.emplace_back(PosColVertex{
+				.Position{.x = -1.0f, .y = y, .z = z},
+				.Color{.r = 0xff, .g = 0xff, .b = 0x00, .a = 0xff},
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position{.x = 1.0f, .y = y, .z = z},
+				.Color{.r = 0xff, .g = 0xff, .b = 0x00, .a = 0xff},
+				});
+		}
+	}
+	//vertical lines at z = 0.0f (near) through 1.0f (far):
+	for (uint32_t i = 0; i < 50; ++i) {
+		float x = (i + 0.5f) / 50.0f * 2.0f - 1.0f;
+		float z = 0.5f + 0.5f * std::sin(5 * time + (i + 0.5f) / 50.0f);
+		if (i % 2 == 0) {
+			lines_vertices.emplace_back(PosColVertex{
+			.Position{.x = x, .y = -1.0f, .z = z},
+			.Color{.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xff},
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position{.x = x, .y = 1.0f, .z = z},
+				.Color{.r = 0xff, .g = 0xff, .b = 0xff, .a = 0xff},
+				});
+		}
+		else {
+			lines_vertices.emplace_back(PosColVertex{
+			.Position{.x = x, .y = -1.0f, .z = z},
+			.Color{.r = 0x44, .g = 0x00, .b = 0xff, .a = 0xff},
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position{.x = x, .y = 1.0f, .z = z},
+				.Color{.r = 0x44, .g = 0x00, .b = 0xff, .a = 0xff},
+				});
+		}
+		
+	}
+	assert(lines_vertices.size() == count);
+
+	for (auto& v : lines_vertices) {
+		vec4 res = CLIP_FROM_WORLD * vec4{ v.Position.x, v.Position.y, v.Position.z, 1.0f };
+		v.Position.x = res[0] / res[3];
+		v.Position.y = res[1] / res[3];
+		v.Position.z = res[2] / res[3];
+	}
 }
 
 
