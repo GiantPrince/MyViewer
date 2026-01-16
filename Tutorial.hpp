@@ -61,6 +61,24 @@ struct Tutorial : RTG::Application {
 		void destroy(RTG&);
 	} lines_pipeline;
 
+	// objects
+	struct ObjectsPipeline{
+		VkDescriptorSetLayout set0_Camera = VK_NULL_HANDLE;
+
+		using Camera = LinesPipeline::Camera;
+
+		// no push constants
+
+		VkPipelineLayout layout = VK_NULL_HANDLE;
+
+		using Vertex = PosColVertex;
+
+		VkPipeline handle = VK_NULL_HANDLE;
+
+		void create(RTG&, VkRenderPass, uint32_t subpass);
+		void destroy(RTG&);
+	} objects_pipeline;
+
 	//pools from which per-workspace things are allocated:
 	VkCommandPool command_pool = VK_NULL_HANDLE;
 	VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
@@ -84,6 +102,8 @@ struct Tutorial : RTG::Application {
 
 	//-------------------------------------------------------------------
 	//static scene resources:
+	Helpers::AllocatedBuffer object_vertices;
+
 
 	//--------------------------------------------------------------------
 	//Resources that change when the swapchain is resized:
