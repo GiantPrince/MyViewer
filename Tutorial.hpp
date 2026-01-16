@@ -3,6 +3,7 @@
 #include "RTG.hpp"
 
 #include "PosColVertex.hpp"
+#include "PosNorTexVertex.hpp"
 #include "mat4.hpp"
 
 struct Tutorial : RTG::Application {
@@ -71,7 +72,7 @@ struct Tutorial : RTG::Application {
 
 		VkPipelineLayout layout = VK_NULL_HANDLE;
 
-		using Vertex = PosColVertex;
+		using Vertex = PosNorTexVertex;
 
 		VkPipeline handle = VK_NULL_HANDLE;
 
