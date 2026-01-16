@@ -17,13 +17,40 @@ void Tutorial::LinesPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 	VkShaderModule vert_module = rtg.helpers.create_shader_module(vert_code);
 	VkShaderModule frag_module = rtg.helpers.create_shader_module(frag_code);
 
+	{
+		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
+			VkDescriptorSetLayoutBinding{
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				.descriptorCount = 1,
+				.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+			}
+		};
 
-	{	
+		VkDescriptorSetLayoutCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = static_cast<uint32_t>(bindings.size()),
+			.pBindings = bindings.data()
+		};
+
+		VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set0_Camera));
+
+
+	}
+
+
+
+
+	{
+		std::array<VkDescriptorSetLayout, 1> layouts{
+			set0_Camera
+		};
+
 		VkPipelineLayoutCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-			.setLayoutCount = 0,
-			.pSetLayouts = nullptr,
-			.pushConstantRangeCount = 0,			
+			.setLayoutCount = static_cast<uint32_t>(layouts.size()),
+			.pSetLayouts = layouts.data(),
+			.pushConstantRangeCount = 0,
 		};
 
 		VK(vkCreatePipelineLayout(rtg.device, &create_info, nullptr, &layout));
@@ -54,7 +81,7 @@ void Tutorial::LinesPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
 			.dynamicStateCount = static_cast<uint32_t>(dynamic_states.size()),
 			.pDynamicStates = dynamic_states.data()
-		};		
+		};
 
 		VkPipelineInputAssemblyStateCreateInfo input_assembly_state{
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
@@ -138,6 +165,10 @@ void Tutorial::LinesPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 
 void Tutorial::LinesPipeline::destroy(RTG& rtg) {
 
+	if (set0_Camera != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set0_Camera, nullptr);
+		set0_Camera = VK_NULL_HANDLE;
+	}
 	if (layout != VK_NULL_HANDLE) {
 		vkDestroyPipelineLayout(rtg.device, layout, nullptr);
 		layout = VK_NULL_HANDLE;
@@ -147,4 +178,6 @@ void Tutorial::LinesPipeline::destroy(RTG& rtg) {
 		vkDestroyPipeline(rtg.device, handle, nullptr);
 		handle = VK_NULL_HANDLE;
 	}
+
+
 }

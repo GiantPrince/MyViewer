@@ -40,8 +40,14 @@ struct Tutorial : RTG::Application {
 	} background_pipeline;
 
 	struct LinesPipeline {
-		// no descriptor sets
+		// descriptor set layouts
+		VkDescriptorSetLayout set0_Camera = VK_NULL_HANDLE;
 
+		// types for descriptors
+		struct Camera {
+			mat4 CLIP_FROM_WORLD;
+		};
+		static_assert(sizeof(Camera) == 4 * 16, "camera buffer structure is packed.");
 		// no push constants
 
 		VkPipelineLayout layout = VK_NULL_HANDLE;
@@ -57,6 +63,8 @@ struct Tutorial : RTG::Application {
 
 	//pools from which per-workspace things are allocated:
 	VkCommandPool command_pool = VK_NULL_HANDLE;
+	VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+	
 
 	//workspaces hold per-render resources:
 	struct Workspace {
@@ -65,6 +73,12 @@ struct Tutorial : RTG::Application {
 		// location for lines data 
 		Helpers::AllocatedBuffer line_vertices_src; // host coherent
 		Helpers::AllocatedBuffer line_vertices;		// device local
+
+		// locations for Camera data
+		Helpers::AllocatedBuffer Camera_src;
+		Helpers::AllocatedBuffer Camera;
+		VkDescriptorSet Camera_descriptors;
+
 	};
 	std::vector< Workspace > workspaces;
 

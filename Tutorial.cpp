@@ -15,13 +15,94 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 	background_pipeline.create(rtg, render_pass, 0);
 	lines_pipeline.create(rtg, render_pass, 0);
 
+	{
+		uint32_t per_workspace = static_cast<uint32_t>(rtg.workspaces.size());
+
+		std::array<VkDescriptorPoolSize, 1> pool_sizes{
+			VkDescriptorPoolSize{
+				.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				.descriptorCount = 1 * per_workspace
+			}
+		};
+
+		VkDescriptorPoolCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+			.flags = 0,
+			.maxSets = per_workspace * 1,
+			.poolSizeCount = static_cast<uint32_t>(pool_sizes.size()),
+			.pPoolSizes = pool_sizes.data()
+		};
+
+		VK(vkCreateDescriptorPool(rtg.device, &create_info, nullptr, &descriptor_pool));
+
+	}
+
 	workspaces.resize(rtg.workspaces.size());
 	for (Workspace &workspace : workspaces) {
 		refsol::Tutorial_constructor_workspace(rtg, command_pool, &workspace.command_buffer);
+
+		workspace.Camera_src = rtg.helpers.create_buffer(
+			sizeof(LinesPipeline::Camera),
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			Helpers::Mapped
+		);
+
+		workspace.Camera = rtg.helpers.create_buffer(
+			sizeof(LinesPipeline::Camera),
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			Helpers::Unmapped
+		);
+
+		{
+			VkDescriptorSetAllocateInfo alloc_info{
+				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+				.descriptorPool = descriptor_pool,
+				.descriptorSetCount = 1,
+				.pSetLayouts = &lines_pipeline.set0_Camera
+			};
+
+			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Camera_descriptors));
+
+		}
+
+		{
+			VkDescriptorBufferInfo Camera_info{
+				.buffer = workspace.Camera.handle,
+				.offset = 0,
+				.range = workspace.Camera.size
+			};
+
+			std::array< VkWriteDescriptorSet, 1> writes{
+				VkWriteDescriptorSet{
+					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+					.dstSet = workspace.Camera_descriptors,
+					.dstBinding = 0,
+					.dstArrayElement = 0,
+					.descriptorCount = 1,
+					.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+					.pBufferInfo = &Camera_info
+				}
+			};
+
+			vkUpdateDescriptorSets(
+				rtg.device,
+				static_cast<uint32_t>(writes.size()),
+				writes.data(),
+				0,
+				nullptr
+			);
+
+		}
+
 	}
+
+	
 }
 
 Tutorial::~Tutorial() {
+	
 	//just in case rendering is still in flight, don't destroy resources:
 	//(not using VK macro to avoid throw-ing in destructor)
 	if (VkResult result = vkDeviceWaitIdle(rtg.device); result != VK_SUCCESS) {
@@ -42,8 +123,21 @@ Tutorial::~Tutorial() {
 		if (workspace.line_vertices.handle != VK_NULL_HANDLE) {
 			rtg.helpers.destroy_buffer(std::move(workspace.line_vertices));
 		}
+
+		if (workspace.Camera_src.handle != VK_NULL_HANDLE) {
+			rtg.helpers.destroy_buffer(std::move(workspace.Camera_src));
+		}
+
+		if (workspace.Camera.handle != VK_NULL_HANDLE) {
+			rtg.helpers.destroy_buffer(std::move(workspace.Camera));
+		}
 	}
 	workspaces.clear();
+
+	if (descriptor_pool) {
+		vkDestroyDescriptorPool(rtg.device, descriptor_pool, nullptr);
+		descriptor_pool = nullptr;
+	}
 
 	background_pipeline.destroy(rtg);
 	lines_pipeline.destroy(rtg);
@@ -130,7 +224,22 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 		};
 
 		vkCmdCopyBuffer(workspace.command_buffer, workspace.line_vertices_src.handle, workspace.line_vertices.handle, 1, &copy_region);
+		{
+			LinesPipeline::Camera camera{
+				.CLIP_FROM_WORLD = CLIP_FROM_WORLD
+			};
+			assert(workspace.Camera_src.size == sizeof(camera));
 
+			memcpy(workspace.Camera_src.allocation.data(), &camera, sizeof(camera));
+			assert(workspace.Camera_src.size == workspace.Camera.size);
+
+			VkBufferCopy camera_copy_region{
+				.srcOffset = 0,
+				.dstOffset = 0,
+				.size = workspace.Camera_src.size
+			};
+			vkCmdCopyBuffer(workspace.command_buffer, workspace.Camera_src.handle, workspace.Camera.handle, 1, &camera_copy_region);
+		}
 		{
 			VkMemoryBarrier memory_barrier{
 				.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
@@ -210,9 +319,27 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 				std::array<VkBuffer, 1> vertex_buffers{ workspace.line_vertices.handle };
 				std::array<VkDeviceSize, 1> offsets{ 0 };
 				vkCmdBindVertexBuffers(workspace.command_buffer, 0, uint32_t(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
-				vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
+				//vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
 
 			}
+
+			{
+				//bind descriptor set layout
+				std::array<VkDescriptorSet, 1> descriptor_sets{ workspace.Camera_descriptors };
+				vkCmdBindDescriptorSets(
+					workspace.command_buffer, 
+					VK_PIPELINE_BIND_POINT_GRAPHICS,
+					lines_pipeline.layout, 
+					0, 
+					static_cast<uint32_t>(descriptor_sets.size()), 
+					descriptor_sets.data(),
+					0,
+					nullptr);
+				
+
+				
+			}
+			vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
 		}
 
 		vkCmdEndRenderPass(workspace.command_buffer);
@@ -236,74 +363,76 @@ void Tutorial::update(float dt) {
 			0.1f,
 			1000.0f
 		) * look_at(
-			3.0f * std::cos(ang), 3.0f * std::sin(ang), 1.0f,
-			0.0f, 0.0f, 0.5f,
+			3.0f * std::cos(ang), 3.0f * std::sin(ang), 3.0f * std::sin(ang),
+			0.0f, 0.0f, 0.0f,
 			0.0f, 0.0f, 1.0f
 		);
 
 	}
 	lines_vertices.clear();	
-	constexpr size_t count = 2 * 50 + 2 * 50;
-	lines_vertices.reserve(count);
 
-	for (uint32_t i = 0; i < 50; ++i) {
-		float y = (i + 0.5f) / 50.0f * 2.0f - 1.0f;
-		float z = 0.5f + 0.5f * std::cos(5 * time + (i + 0.5f) / 50.0f);
-		if (i % 2 == 0) {
-			lines_vertices.emplace_back(PosColVertex{
-			.Position{.x = -1.0f, .y = y, .z = z},
-			.Color{.r = 0xff, .g = 0xff, .b = 0xff, .a = 0xff},
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position{.x = 1.0f, .y = y, .z = z },
-				.Color{.r = 0xff, .g = 0xff, .b = 0xff, .a = 0xff},
-				});
-		}
-		else {
-			lines_vertices.emplace_back(PosColVertex{
-				.Position{.x = -1.0f, .y = y, .z = z},
-				.Color{.r = 0xff, .g = 0xff, .b = 0x00, .a = 0xff},
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position{.x = 1.0f, .y = y, .z = z},
-				.Color{.r = 0xff, .g = 0xff, .b = 0x00, .a = 0xff},
-				});
-		}
-	}
-	//vertical lines at z = 0.0f (near) through 1.0f (far):
-	for (uint32_t i = 0; i < 50; ++i) {
-		float x = (i + 0.5f) / 50.0f * 2.0f - 1.0f;
-		float z = 0.5f + 0.5f * std::sin(5 * time + (i + 0.5f) / 50.0f);
-		if (i % 2 == 0) {
-			lines_vertices.emplace_back(PosColVertex{
-			.Position{.x = x, .y = -1.0f, .z = z},
+	// Lissajous
+	/*float Ax = 0.5f;
+	float Ay = 1.0f;
+	float Az = 0.75f;
+
+	float a = 3.0f;
+	float b = 4.0f;
+	float c = 7.0f;
+
+	float aa = a;
+	float bb = b;
+	float cc = c;
+
+	float phi_x = 0.5f * sin(0.7f * time);
+	float phi_y = 0.5f * sin(1.1f * time + 1.3f);
+	float phi_z = 0.5f * sin(1.7f * time + 2.1f);
+
+
+	float step = 0.01f;
+	for (float t = 0; t < 3 * 5 * 11 * 2 * float(M_PI); t += step) {
+		float x_t = Ax * std::sin(aa * t + phi_x);
+		float x_t_1 = Ax * std::sin(aa * (t + step) + phi_x);
+		float y_t = Ay * std::sin(bb * t + phi_y);
+		float y_t_1 = Ay * std::sin(bb * (t + step) + phi_y);
+		float z_t = Az * std::sin(cc * t + phi_z);
+		float z_t_1 = Az * std::sin(cc * (t + step) + phi_z);
+		lines_vertices.emplace_back(PosColVertex{
+			.Position{.x = x_t, .y = y_t, .z = z_t},
 			.Color{.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xff},
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position{.x = x, .y = 1.0f, .z = z},
-				.Color{.r = 0xff, .g = 0xff, .b = 0xff, .a = 0xff},
-				});
-		}
-		else {
-			lines_vertices.emplace_back(PosColVertex{
-			.Position{.x = x, .y = -1.0f, .z = z},
-			.Color{.r = 0x44, .g = 0x00, .b = 0xff, .a = 0xff},
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position{.x = x, .y = 1.0f, .z = z},
-				.Color{.r = 0x44, .g = 0x00, .b = 0xff, .a = 0xff},
-				});
-		}
-		
-	}
-	assert(lines_vertices.size() == count);
+		});
+		lines_vertices.emplace_back(PosColVertex{
+			.Position{.x = x_t_1, .y = y_t_1, .z = z_t_1},
+			.Color{.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xff},
+			});
 
-	for (auto& v : lines_vertices) {
-		vec4 res = CLIP_FROM_WORLD * vec4{ v.Position.x, v.Position.y, v.Position.z, 1.0f };
-		v.Position.x = res[0] / res[3];
-		v.Position.y = res[1] / res[3];
-		v.Position.z = res[2] / res[3];
+	}*/
+	float R = 1.0f;
+	float r = 0.35f;
+	float p = 3.0f;
+	float q = 97.0f;
+
+	float step = 0.01f;
+	for (float t = 0; t < 2 * float(M_PI); t += step) {
+		float x_t = (R + r * std::cos(q * t)) * std::cos(p * t);
+		float y_t = (R + r * std::cos(q * t)) * std::sin(p * t);
+		float z_t = r * std::sin(q * t);
+
+		float x_t_1 = (R + r * std::cos(q * (t + step))) * std::cos(p * (t + step));
+		float y_t_1 = (R + r * std::cos(q * (t + step))) * std::sin(p * (t + step));
+		float z_t_1 = r * std::sin(q * (t + step));
+
+		lines_vertices.emplace_back(PosColVertex{
+			.Position{.x = x_t, .y = y_t, .z = z_t},
+			.Color{.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xff},
+			});
+		lines_vertices.emplace_back(PosColVertex{
+			.Position{.x = x_t_1, .y = y_t_1, .z = z_t_1},
+			.Color{.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xff},
+			});
 	}
+
+	
 }
 
 

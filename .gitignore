@@ -8,3 +8,6 @@ bin/main.pdb
 img/
 CppProperties.json
 glfw-3.4.bin.WIN64/
+x64/
+*.vcxproj*
+*.sln
