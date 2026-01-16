@@ -56,6 +56,8 @@ struct Helpers {
 
 	//-----------------------
 	//CPU -> GPU data transfer:
+	VkCommandPool transfer_command_pool = VK_NULL_HANDLE;
+	VkCommandBuffer transfer_command_buffer = VK_NULL_HANDLE;
 
 	// NOTE: synchronizes *hard* against the GPU; inefficient to use for streaming data!
 	void transfer_to_buffer(void const *data, size_t size, AllocatedBuffer &target);
