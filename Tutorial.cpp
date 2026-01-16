@@ -102,8 +102,95 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 	{
 		std::vector<PosNorTexVertex> vertices;
 
+		{// a quadrilateral
+			plane_vertices.first = static_cast<uint32_t>(vertices.size());
+			vertices.emplace_back(PosNorTexVertex{
+			.Position{.x = -1.0f, .y = -1.0f, .z = 0.0f },
+			.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f },
+			.TexCoord{.s = 0.0f, .t = 0.0f },
+				});
+			vertices.emplace_back(PosNorTexVertex{
+				.Position{.x = 1.0f, .y = -1.0f, .z = 0.0f },
+				.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f},
+				.TexCoord{.s = 1.0f, .t = 0.0f },
+				});
+			vertices.emplace_back(PosNorTexVertex{
+				.Position{.x = -1.0f, .y = 1.0f, .z = 0.0f },
+				.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f},
+				.TexCoord{.s = 0.0f, .t = 1.0f },
+				});
+			vertices.emplace_back(PosNorTexVertex{
+				.Position{.x = 1.0f, .y = 1.0f, .z = 0.0f },
+				.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f },
+				.TexCoord{.s = 1.0f, .t = 1.0f },
+				});
+			vertices.emplace_back(PosNorTexVertex{
+				.Position{.x = -1.0f, .y = 1.0f, .z = 0.0f },
+				.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f},
+				.TexCoord{.s = 0.0f, .t = 1.0f },
+				});
+			vertices.emplace_back(PosNorTexVertex{
+				.Position{.x = 1.0f, .y = -1.0f, .z = 0.0f },
+				.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f},
+				.TexCoord{.s = 1.0f, .t = 0.0f },
+				});
+			plane_vertices.count = static_cast<uint32_t>(vertices.size()) - plane_vertices.first;
+
+		}
+
+		{ //A torus:
+			torus_vertices.first = uint32_t(vertices.size());
+
+			//TODO: torus!
+			constexpr float R1 = 0.75f;
+			constexpr float R2 = 0.15f;
+
+			constexpr uint32_t U_STEPS = 20;
+			constexpr uint32_t V_STEPS = 16;
+
+			constexpr float V_REPEATS = 2.0f;
+			constexpr float U_REPEATS = int(V_REPEATS / R2 * R1 + 0.999f);
+
+			auto emplace_vertex = [&](uint32_t ui, uint32_t vi) {
+				float ua = (ui % U_STEPS) / static_cast<float>(U_STEPS) * 2.0f * static_cast<float>(M_PI);
+				float va = (vi % V_STEPS) / static_cast<float>(V_STEPS) * 2.0f * static_cast<float>(M_PI);
+
+				vertices.emplace_back(PosNorTexVertex{
+					.Position{
+						.x = (R1 + R2 * std::cos(va)) * std::cos(ua),
+						.y = (R1 + R2 * std::cos(va)) * std::sin(ua),
+						.z = R2 * std::sin(va),
+					},
+					.Normal{
+						.x = std::cos(va) * std::cos(ua),
+						.y = std::cos(va) * std::sin(ua),
+						.z = std::sin(va),
+					},
+					.TexCoord{
+						.s = ui / float(U_STEPS) * U_REPEATS,
+						.t = vi / float(V_STEPS) * V_REPEATS,
+					},
+				});
+			};
+
+			for (uint32_t ui = 0; ui < U_STEPS; ++ui) {
+				for (uint32_t vi = 0; vi < V_STEPS; ++vi) {
+					emplace_vertex(ui, vi);
+					emplace_vertex(ui + 1, vi);
+					emplace_vertex(ui, vi + 1);
+
+					emplace_vertex(ui, vi + 1);
+					emplace_vertex(ui + 1, vi);
+					emplace_vertex(ui + 1, vi + 1);
+				}
+			}
+
+			torus_vertices.count = uint32_t(vertices.size()) - torus_vertices.first;
+		}
+
+
 		//A single triangle
-		vertices.emplace_back(PosNorTexVertex{
+		/*vertices.emplace_back(PosNorTexVertex{
 			.Position{.x = 0.0f, .y = 0.0f, .z = 0.0f },
 			.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f  },
 			.TexCoord{.s = 0.0f, .t = 0.0f}
@@ -117,7 +204,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 			.Position{.x = 0.0f, .y = 1.0f, .z = 0.0f },
 			.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f  },
 			.TexCoord{.s = 0.0f, .t = 1.0f}
-			});
+			});*/
 
 		size_t bytes = vertices.size() * sizeof(vertices[0]);
 

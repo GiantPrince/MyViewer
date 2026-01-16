@@ -104,7 +104,12 @@ struct Tutorial : RTG::Application {
 	//-------------------------------------------------------------------
 	//static scene resources:
 	Helpers::AllocatedBuffer object_vertices;
-
+	struct ObjectVertices {
+		uint32_t first = 0;
+		uint32_t count = 0;
+	};
+	ObjectVertices plane_vertices;
+	ObjectVertices torus_vertices;
 
 	//--------------------------------------------------------------------
 	//Resources that change when the swapchain is resized:
