@@ -21,7 +21,7 @@ void Tutorial::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint3
 		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
 			VkDescriptorSetLayoutBinding{
 				.binding = 0,
-				.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				.descriptorCount = 1,
 				.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
 			}
@@ -33,12 +33,13 @@ void Tutorial::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint3
 			.pBindings = bindings.data()
 		};
 
-		VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set0_Camera));
+		VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set1_Transforms));
 	}
 
 	{
-		std::array<VkDescriptorSetLayout, 1> layouts{
-			set0_Camera
+		std::array<VkDescriptorSetLayout, 2> layouts{
+			set1_Transforms,
+			set1_Transforms
 		};
 
 		VkPipelineLayoutCreateInfo create_info{
@@ -160,9 +161,9 @@ void Tutorial::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint3
 
 void Tutorial::ObjectsPipeline::destroy(RTG& rtg) {
 
-	if (set0_Camera != VK_NULL_HANDLE) {
-		vkDestroyDescriptorSetLayout(rtg.device, set0_Camera, nullptr);
-		set0_Camera = VK_NULL_HANDLE;
+	if (set1_Transforms != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set1_Transforms, nullptr);
+		set1_Transforms = VK_NULL_HANDLE;
 	}
 	if (layout != VK_NULL_HANDLE) {
 		vkDestroyPipelineLayout(rtg.device, layout, nullptr);

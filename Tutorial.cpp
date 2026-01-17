@@ -19,9 +19,13 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 	{
 		uint32_t per_workspace = static_cast<uint32_t>(rtg.workspaces.size());
 
-		std::array<VkDescriptorPoolSize, 1> pool_sizes{
+		std::array<VkDescriptorPoolSize, 2> pool_sizes{
 			VkDescriptorPoolSize{
 				.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				.descriptorCount = 1 * per_workspace
+			},
+			VkDescriptorPoolSize{
+				.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				.descriptorCount = 1 * per_workspace
 			}
 		};
@@ -29,7 +33,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		VkDescriptorPoolCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			.flags = 0,
-			.maxSets = per_workspace * 1,
+			.maxSets = per_workspace * 2,
 			.poolSizeCount = static_cast<uint32_t>(pool_sizes.size()),
 			.pPoolSizes = pool_sizes.data()
 		};
@@ -66,6 +70,17 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 
 			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Camera_descriptors));
 
+		}
+
+		{
+			VkDescriptorSetAllocateInfo alloc_info{
+				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+				.descriptorPool = descriptor_pool,
+				.descriptorSetCount = 1,
+				.pSetLayouts = &objects_pipeline.set1_Transforms
+			};
+
+			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Transforms_descriptors));
 		}
 
 		{
@@ -253,6 +268,14 @@ Tutorial::~Tutorial() {
 		if (workspace.Camera.handle != VK_NULL_HANDLE) {
 			rtg.helpers.destroy_buffer(std::move(workspace.Camera));
 		}
+
+		if (workspace.Transforms_src.handle != VK_NULL_HANDLE) {
+			rtg.helpers.destroy_buffer(std::move(workspace.Transforms_src));
+		}
+
+		if (workspace.Transforms.handle != VK_NULL_HANDLE) {
+			rtg.helpers.destroy_buffer(std::move(workspace.Transforms));
+		}
 	}
 	workspaces.clear();
 
@@ -384,6 +407,121 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 
 	}
 
+	if (!object_instances.empty()) {
+		// realloc buffers if needed
+		size_t needed_bytes = object_instances.size() * sizeof(ObjectsPipeline::Transform);
+		if (workspace.Transforms_src.handle == VK_NULL_HANDLE || workspace.Transforms_src.size < needed_bytes) {
+			size_t new_bytes = (needed_bytes + 4096) / 4096 * 4096;
+
+			if (workspace.Transforms_src.handle != VK_NULL_HANDLE) {
+				rtg.helpers.destroy_buffer(std::move(workspace.Transforms_src));
+			}
+			if (workspace.Transforms.handle != VK_NULL_HANDLE) {
+				rtg.helpers.destroy_buffer(std::move(workspace.Transforms));
+			}
+			
+
+			workspace.Transforms_src = rtg.helpers.create_buffer(
+				new_bytes,
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+				Helpers::Mapped
+			);
+
+			workspace.Transforms = rtg.helpers.create_buffer(
+				new_bytes,
+				VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				Helpers::Unmapped
+			);
+
+			// Update Descriptor Set
+			VkDescriptorBufferInfo Transforms_info{
+				.buffer = workspace.Transforms.handle,
+				.offset = 0,
+				.range = workspace.Transforms.size
+			};
+
+			std::array<VkWriteDescriptorSet, 1> writes{
+				VkWriteDescriptorSet{
+					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+					.dstSet = workspace.Transforms_descriptors,
+					.dstBinding = 0,
+					.dstArrayElement = 0,
+					.descriptorCount = 1,
+					.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+					.pBufferInfo = &Transforms_info
+				}
+			};
+
+			vkUpdateDescriptorSets(
+				rtg.device,
+				uint32_t(writes.size()),
+				writes.data(),
+				0, nullptr
+			);
+			std::cout << "Re-allocated object Transforms buffers to " << new_bytes << std::endl;
+
+		}
+
+		assert(workspace.Transforms_src.size == workspace.Transforms.size);
+		assert(workspace.Transforms_src.size >= needed_bytes);
+
+		{
+			assert(workspace.Transforms_src.allocation.mapped);
+			ObjectsPipeline::Transform* out = reinterpret_cast<ObjectsPipeline::Transform*>(workspace.Transforms_src.allocation.data());
+			for (ObjectInstance const& inst : object_instances) {
+				*out = inst.transform;
+				++out;
+			}
+		}
+		VkBufferCopy copy_region{
+			.srcOffset = 0,
+			.dstOffset = 0,
+			.size = needed_bytes
+		};
+
+		vkCmdCopyBuffer(workspace.command_buffer, workspace.Transforms_src.handle, workspace.Transforms.handle, 1, &copy_region);
+		
+		
+		{
+			LinesPipeline::Camera camera{
+				.CLIP_FROM_WORLD = CLIP_FROM_WORLD
+			};
+			assert(workspace.Camera_src.size == sizeof(camera));
+
+			memcpy(workspace.Camera_src.allocation.data(), &camera, sizeof(camera));
+			assert(workspace.Camera_src.size == workspace.Camera.size);
+
+			VkBufferCopy camera_copy_region{
+				.srcOffset = 0,
+				.dstOffset = 0,
+				.size = workspace.Camera_src.size
+			};
+			vkCmdCopyBuffer(workspace.command_buffer, workspace.Camera_src.handle, workspace.Camera.handle, 1, &camera_copy_region);
+		}
+		{
+			VkMemoryBarrier memory_barrier{
+				.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+				.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+				.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT
+			};
+
+			vkCmdPipelineBarrier(
+				workspace.command_buffer,
+				VK_PIPELINE_STAGE_TRANSFER_BIT,
+				VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+				0,
+				1, &memory_barrier,//memoryBarriers (count, data)
+				0, nullptr,//bufferBarriers (count, data)
+				0, nullptr//imageBarriers (count, data)
+			);
+		}
+
+
+	}
+
+
 	
 	//render pass
 	{
@@ -466,6 +604,10 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
 		}
 
+		{
+
+		}
+
 		//objects
 		{
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.handle);
@@ -478,7 +620,30 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 				//Camera descriptor set is still bound(!)
 
 			}
-			vkCmdDraw(workspace.command_buffer, static_cast<uint32_t>(object_vertices.size / sizeof(PosColVertex)), 1, 0, 0);
+
+			{
+				std::array<VkDescriptorSet, 1> descriptor_sets{
+					workspace.Transforms_descriptors
+				};
+
+				vkCmdBindDescriptorSets(
+					workspace.command_buffer,
+					VK_PIPELINE_BIND_POINT_GRAPHICS,
+					objects_pipeline.layout,
+					1,
+					uint32_t(descriptor_sets.size()),
+					descriptor_sets.data(),
+					0,
+					nullptr
+				);
+
+			}
+
+			for (ObjectInstance const& inst : object_instances) {
+				uint32_t index = uint32_t(&inst - &object_instances[0]);
+				vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+			}
+			//vkCmdDraw(workspace.command_buffer, static_cast<uint32_t>(object_vertices.size / sizeof(PosColVertex)), 1, 0, 0);
 
 		}
 
@@ -571,6 +736,50 @@ void Tutorial::update(float dt) {
 			.Position{.x = x_t_1, .y = y_t_1, .z = z_t_1},
 			.Color{.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xff},
 			});
+	}
+
+	{
+		object_instances.clear();
+
+		{
+			mat4 WORLD_FROM_LOCAL{
+				1.0f, 0.0f, 0.0f, 0.0f,
+				0.0f, 1.0f, 0.0f, 0.0f,
+				0.0f, 0.0f, 1.0f, 0.0f,
+				1.0f, 0.0f, 0.0f, 1.0f,
+			};
+
+			object_instances.emplace_back(ObjectInstance{
+				.vertices = plane_vertices,
+				.transform = {
+					.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+					.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
+					.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL
+				}
+			});
+
+		}
+
+		{
+			float ang = time / 60.0f * 2.0f * float(M_PI) * 10.0f;
+			float ca = std::cos(ang);
+			float sa = std::sin(ang);
+			mat4 WORLD_FROM_LOCAL{
+				  ca, 0.0f,  -sa, 0.0f,
+				0.0f, 1.0f, 0.0f, 0.0f,
+				  sa, 0.0f,   ca, 0.0f,
+				-1.0f,0.0f, 0.0f, 1.0f,
+			};
+
+			object_instances.emplace_back(ObjectInstance{
+				.vertices = torus_vertices,
+				.transform{
+					.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+					.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
+					.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,
+				},
+			});
+		}
 	}
 
 	

@@ -64,7 +64,17 @@ struct Tutorial : RTG::Application {
 
 	// objects
 	struct ObjectsPipeline{
-		VkDescriptorSetLayout set0_Camera = VK_NULL_HANDLE;
+		//VkDescriptorSetLayout set0_Camera = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
+
+		struct Transform {
+			mat4 CLIP_FROM_LOCAL;
+			mat4 WORLD_FROM_LOCAL;
+			mat4 WORLD_FROM_LOCAL_NORMAL;
+		};
+
+		static_assert(sizeof(Transform) == 16 * 4 + 16 * 4 + 16 * 4, "Transform is the expected size.");
+
 
 		using Camera = LinesPipeline::Camera;
 
@@ -84,19 +94,25 @@ struct Tutorial : RTG::Application {
 	VkCommandPool command_pool = VK_NULL_HANDLE;
 	VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
 	
-
+	
 	//workspaces hold per-render resources:
+	
 	struct Workspace {
 		VkCommandBuffer command_buffer = VK_NULL_HANDLE; //from the command pool above; reset at the start of every render.
 
 		// location for lines data 
 		Helpers::AllocatedBuffer line_vertices_src; // host coherent
 		Helpers::AllocatedBuffer line_vertices;		// device local
-
+		
 		// locations for Camera data
 		Helpers::AllocatedBuffer Camera_src;
 		Helpers::AllocatedBuffer Camera;
 		VkDescriptorSet Camera_descriptors;
+
+		// location for Transform data
+		Helpers::AllocatedBuffer Transforms_src;
+		Helpers::AllocatedBuffer Transforms;
+		VkDescriptorSet Transforms_descriptors;
 
 	};
 	std::vector< Workspace > workspaces;
@@ -108,6 +124,7 @@ struct Tutorial : RTG::Application {
 		uint32_t first = 0;
 		uint32_t count = 0;
 	};
+
 	ObjectVertices plane_vertices;
 	ObjectVertices torus_vertices;
 
@@ -133,6 +150,13 @@ struct Tutorial : RTG::Application {
 	mat4 CLIP_FROM_WORLD;
 
 	std::vector<LinesPipeline::Vertex> lines_vertices;
+
+	struct ObjectInstance {
+		ObjectVertices vertices;
+		ObjectsPipeline::Transform transform;
+	};
+	std::vector<ObjectInstance> object_instances;
+
 
 	//--------------------------------------------------------------------
 	//Rendering function, uses all the resources above to queue work to draw a frame:
