@@ -64,7 +64,7 @@ struct Tutorial : RTG::Application {
 
 	// objects
 	struct ObjectsPipeline{
-		//VkDescriptorSetLayout set0_Camera = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set0_World = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
 
@@ -73,9 +73,16 @@ struct Tutorial : RTG::Application {
 			mat4 WORLD_FROM_LOCAL;
 			mat4 WORLD_FROM_LOCAL_NORMAL;
 		};
-
 		static_assert(sizeof(Transform) == 16 * 4 + 16 * 4 + 16 * 4, "Transform is the expected size.");
 
+		struct World {
+			struct { float x, y, z, padding_; } SKY_DIRECTION;
+			struct { float x, y, z, padding_; } SKY_ENERGY;
+			struct { float x, y, z, padding_; } SUN_DIRECTION;
+			struct { float x, y, z, padding_; } SUN_ENERGY;
+		};
+
+		static_assert(sizeof(World) == 4 * 4 + 4 * 4 + 4 * 4 + 4 * 4, "World is the expected size.");		
 
 		using Camera = LinesPipeline::Camera;
 
@@ -109,6 +116,11 @@ struct Tutorial : RTG::Application {
 		Helpers::AllocatedBuffer Camera_src;
 		Helpers::AllocatedBuffer Camera;
 		VkDescriptorSet Camera_descriptors;
+
+		// location for World data
+		Helpers::AllocatedBuffer World_src;
+		Helpers::AllocatedBuffer World;
+		VkDescriptorSet World_descriptors;
 
 		// location for Transform data
 		Helpers::AllocatedBuffer Transforms_src;
