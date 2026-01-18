@@ -134,22 +134,22 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 				.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f},
 				.TexCoord{.s = 0.0f, .t = 1.0f },
 				});
-			vertices.emplace_back(PosNorTexVertex{
-				.Position{.x = 1.0f, .y = 1.0f, .z = 0.0f },
-				.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f },
-				.TexCoord{.s = 1.0f, .t = 1.0f },
-				});
-			vertices.emplace_back(PosNorTexVertex{
-				.Position{.x = -1.0f, .y = 1.0f, .z = 0.0f },
-				.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f},
-				.TexCoord{.s = 0.0f, .t = 1.0f },
-				});
-			vertices.emplace_back(PosNorTexVertex{
-				.Position{.x = 1.0f, .y = -1.0f, .z = 0.0f },
-				.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f},
-				.TexCoord{.s = 1.0f, .t = 0.0f },
-				});
-			plane_vertices.count = static_cast<uint32_t>(vertices.size()) - plane_vertices.first;
+				vertices.emplace_back(PosNorTexVertex{
+					.Position{.x = 1.0f, .y = 1.0f, .z = 0.0f },
+					.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f },
+					.TexCoord{.s = 1.0f, .t = 1.0f },
+					});
+				vertices.emplace_back(PosNorTexVertex{
+					.Position{.x = -1.0f, .y = 1.0f, .z = 0.0f },
+					.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f},
+					.TexCoord{.s = 0.0f, .t = 1.0f },
+					});
+				vertices.emplace_back(PosNorTexVertex{
+					.Position{.x = 1.0f, .y = -1.0f, .z = 0.0f },
+					.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f},
+					.TexCoord{.s = 1.0f, .t = 0.0f },
+					});
+				plane_vertices.count = static_cast<uint32_t>(vertices.size()) - plane_vertices.first;
 
 		}
 
@@ -185,8 +185,8 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 						.s = ui / float(U_STEPS) * U_REPEATS,
 						.t = vi / float(V_STEPS) * V_REPEATS,
 					},
-				});
-			};
+					});
+				};
 
 			for (uint32_t ui = 0; ui < U_STEPS; ++ui) {
 				for (uint32_t vi = 0; vi < V_STEPS; ++vi) {
@@ -233,6 +233,185 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		rtg.helpers.transfer_to_buffer(vertices.data(), bytes, object_vertices);
 	}
 
+	{
+		textures.reserve(2);
+		{ 
+			uint32_t size = 128;
+			std::vector< uint32_t > data;
+			data.reserve(size * size);
+			for (uint32_t y = 0; y < size; ++y) {
+				float fy = (y + 0.5f) / float(size);
+				for (uint32_t x = 0; x < size; ++x) {
+					float fx = (x + 0.5f) / float(size);
+					//highlight the origin:
+					if (fx < 0.05f && fy < 0.05f) data.emplace_back(0xff0000ff); //red
+					else if ((fx < 0.5f) == (fy < 0.5f)) data.emplace_back(0xff444444); //dark grey
+					else data.emplace_back(0xffbbbbbb); //light grey
+				}
+			}
+			assert(data.size() == size * size);
+
+			//TODO: make a place for the texture to live on the GPU
+			textures.emplace_back(rtg.helpers.create_image(
+				VkExtent2D{ .width = size, .height = size },
+				VK_FORMAT_R8G8B8A8_UNORM,
+				VK_IMAGE_TILING_OPTIMAL,
+				VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				Helpers::Unmapped
+			));
+
+
+			//TODO: transfer data
+			rtg.helpers.transfer_to_image(data.data(), sizeof(data[0])* data.size(), textures.back());
+		}
+
+		{ //TODO: texture 1 will be a classic 'xor' texture
+			uint32_t size = 256;
+			std::vector< uint32_t > data;
+			data.reserve(size* size);
+			for (uint32_t y = 0; y < size; ++y) {
+				for (uint32_t x = 0; x < size; ++x) {
+					uint8_t r = uint8_t(x) ^ uint8_t(y);
+					uint8_t g = uint8_t(x + 128) ^ uint8_t(y);
+					uint8_t b = uint8_t(x) ^ uint8_t(y + 27);
+					uint8_t a = 0xff;
+					data.emplace_back(uint32_t(r) | (uint32_t(g) << 8) | (uint32_t(b) << 16) | (uint32_t(a) << 24));
+				}
+			}
+			assert(data.size() == size * size);
+
+			//make a place for the texture to live on the GPU:
+			textures.emplace_back(rtg.helpers.create_image(
+				VkExtent2D{ .width = size , .height = size }, //size of image
+				VK_FORMAT_R8G8B8A8_SRGB, //how to interpret image data (in this case, SRGB-encoded 8-bit RGBA)
+				VK_IMAGE_TILING_OPTIMAL,
+				VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
+				Helpers::Unmapped
+			));
+
+			//transfer data:
+			rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
+		}
+	}
+
+	{
+		texture_views.reserve(textures.size());
+		for (Helpers::AllocatedImage const& image : textures) {
+			VkImageViewCreateInfo create_info{
+				.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+				.flags = 0,
+				.image = image.handle,
+				.viewType = VK_IMAGE_VIEW_TYPE_2D,
+				.format = image.format,
+				.subresourceRange = {
+					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+					.baseMipLevel = 0,
+					.levelCount = 1,
+					.baseArrayLayer = 0,
+					.layerCount = 1
+				}
+			};
+			VkImageView image_view = VK_NULL_HANDLE;
+			VK(vkCreateImageView(rtg.device, &create_info, nullptr, &image_view));
+
+			texture_views.emplace_back(image_view);
+
+			
+		}
+
+		assert(texture_views.size() == textures.size());
+	}
+
+	{
+		VkSamplerCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.flags = 0,
+			.magFilter = VK_FILTER_NEAREST,
+			.minFilter = VK_FILTER_NEAREST,
+			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.mipLodBias = 0.0f,
+			.anisotropyEnable = VK_FALSE,
+			.maxAnisotropy = 0.0f,
+			.compareEnable = VK_FALSE,
+			.compareOp = VK_COMPARE_OP_ALWAYS,
+			.minLod = 0.0f,
+			.maxLod = 0.0f,
+			.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
+			.unnormalizedCoordinates = VK_FALSE
+		};
+
+		VK(vkCreateSampler(rtg.device, &create_info, nullptr, &texture_sampler));
+	}
+
+	{
+		uint32_t per_texture = static_cast<uint32_t>(textures.size());
+		std::array<VkDescriptorPoolSize, 1> pool_sizes{
+			VkDescriptorPoolSize{
+				.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.descriptorCount = 1 * 1 * per_texture
+			}
+		};
+
+		VkDescriptorPoolCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+			.flags = 0,
+			.maxSets = 1 * per_texture,
+			.poolSizeCount = static_cast<uint32_t>(pool_sizes.size()),
+			.pPoolSizes = pool_sizes.data()
+		};
+
+		VK(vkCreateDescriptorPool(rtg.device, &create_info, nullptr, &texture_descriptor_pool));
+
+	}
+
+	{
+		VkDescriptorSetAllocateInfo alloc_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+			.descriptorPool = texture_descriptor_pool,
+			.descriptorSetCount = 1,
+			.pSetLayouts = &objects_pipeline.set2_TEXTURE
+		};
+
+		texture_descriptors.assign(textures.size(), VK_NULL_HANDLE);
+		for (VkDescriptorSet& texture_descriptor : texture_descriptors) {
+			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &texture_descriptor));
+		}
+
+
+		std::vector<VkDescriptorImageInfo> infos(textures.size());
+		std::vector<VkWriteDescriptorSet> writes(textures.size());
+
+		for (Helpers::AllocatedImage& image : textures) {
+			size_t i = &image - &textures[0];
+
+			infos[i] = VkDescriptorImageInfo{
+				.sampler = texture_sampler,
+				.imageView = texture_views[i],
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+			};
+
+			writes[i] = VkWriteDescriptorSet{
+				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+				.dstSet = texture_descriptors[i],
+				.dstBinding = 0,
+				.dstArrayElement = 0,
+				.descriptorCount = 1,
+				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.pImageInfo = &infos[i]
+			};
+
+
+		}
+
+		vkUpdateDescriptorSets(rtg.device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+
+	}
+
 	
 }
 
@@ -243,6 +422,30 @@ Tutorial::~Tutorial() {
 	if (VkResult result = vkDeviceWaitIdle(rtg.device); result != VK_SUCCESS) {
 		std::cerr << "Failed to vkDeviceWaitIdle in Tutorial::~Tutorial [" << string_VkResult(result) << "]; continuing anyway." << std::endl;
 	}
+
+	if (texture_descriptor_pool) {
+		vkDestroyDescriptorPool(rtg.device, texture_descriptor_pool, nullptr);
+		texture_descriptor_pool = nullptr;
+		texture_descriptors.clear();
+	}
+
+	if (texture_sampler) {
+		vkDestroySampler(rtg.device, texture_sampler, nullptr);
+		texture_sampler = VK_NULL_HANDLE;
+	}
+
+	for (VkImageView& view : texture_views) {
+		vkDestroyImageView(rtg.device, view, nullptr);
+		view = VK_NULL_HANDLE;
+	}
+
+	texture_views.clear();
+
+	for (auto& texture : textures) {
+		rtg.helpers.destroy_image(std::move(texture));
+	}
+	textures.clear();
+	
 
 	rtg.helpers.destroy_buffer(std::move(object_vertices));
 
@@ -641,6 +844,17 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 
 			for (ObjectInstance const& inst : object_instances) {
 				uint32_t index = uint32_t(&inst - &object_instances[0]);
+
+				vkCmdBindDescriptorSets(
+					workspace.command_buffer,
+					VK_PIPELINE_BIND_POINT_GRAPHICS,
+					objects_pipeline.layout,
+					2,
+					1, &texture_descriptors[inst.texture],
+					0, nullptr
+				);
+
+
 				vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
 			}
 			//vkCmdDraw(workspace.command_buffer, static_cast<uint32_t>(object_vertices.size / sizeof(PosColVertex)), 1, 0, 0);
@@ -778,6 +992,7 @@ void Tutorial::update(float dt) {
 					.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
 					.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,
 				},
+				.texture = 1
 			});
 		}
 	}

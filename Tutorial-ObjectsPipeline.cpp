@@ -37,9 +37,30 @@ void Tutorial::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint3
 	}
 
 	{
-		std::array<VkDescriptorSetLayout, 2> layouts{
+		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
+			VkDescriptorSetLayoutBinding{
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.descriptorCount = 1,
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+			}
+		};
+
+		VkDescriptorSetLayoutCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = uint32_t(bindings.size()),
+			.pBindings = bindings.data()
+		};
+
+		VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set2_TEXTURE));
+
+	}
+
+	{
+		std::array<VkDescriptorSetLayout, 3> layouts{
 			set1_Transforms,
-			set1_Transforms
+			set1_Transforms,
+			set2_TEXTURE
 		};
 
 		VkPipelineLayoutCreateInfo create_info{
@@ -173,5 +194,10 @@ void Tutorial::ObjectsPipeline::destroy(RTG& rtg) {
 	if (handle != VK_NULL_HANDLE) {
 		vkDestroyPipeline(rtg.device, handle, nullptr);
 		handle = VK_NULL_HANDLE;
+	}
+
+	if (set2_TEXTURE != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set2_TEXTURE, nullptr);
+		set2_TEXTURE = VK_NULL_HANDLE;
 	}
 }
