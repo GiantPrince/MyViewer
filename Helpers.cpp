@@ -41,15 +41,69 @@ Helpers::Allocation::~Allocation() {
 }
 
 //----------------------------
+Helpers::Allocation Helpers::allocate(VkMemoryRequirements const& req, VkMemoryPropertyFlags properties, MapFlag map) {
+	return allocate(req.size, req.alignment, find_memory_type(req.memoryTypeBits, properties), map);
+}
+
+Helpers::Allocation Helpers::allocate(VkDeviceSize size, VkDeviceSize alignment, uint32_t memory_type_index, MapFlag map) {
+	Helpers::Allocation allocation;
+
+	VkMemoryAllocateInfo alloc_info{
+		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		.allocationSize = size,
+		.memoryTypeIndex = memory_type_index
+	};
+
+	VK(vkAllocateMemory(rtg.device, &alloc_info, nullptr, &allocation.handle));
+	allocation.size = size;
+	allocation.offset = 0;
+
+	if (map == Mapped) {
+		VK(vkMapMemory(rtg.device, allocation.handle, 0, size, 0, &allocation.mapped));
+	}
+	return allocation;
+}
+
+void Helpers::free(Helpers::Allocation&& allocation) {
+	if (allocation.mapped != nullptr) {
+		vkUnmapMemory(rtg.device, allocation.handle);
+		allocation.mapped = nullptr;
+	}
+
+	vkFreeMemory(rtg.device, allocation.handle, nullptr);
+
+	allocation.handle = VK_NULL_HANDLE;
+	allocation.size = 0;
+	allocation.offset = 0;
+}
 
 Helpers::AllocatedBuffer Helpers::create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, MapFlag map) {
 	AllocatedBuffer buffer;
-	refsol::Helpers_create_buffer(rtg, size, usage, properties, (map == Mapped), &buffer);
+	VkBufferCreateInfo create_info{
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = size,
+		.usage = usage,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE
+	};
+
+	VK(vkCreateBuffer(rtg.device, &create_info, nullptr, &buffer.handle));
+
+	buffer.size = size;
+
+	VkMemoryRequirements req;
+	vkGetBufferMemoryRequirements(rtg.device, buffer.handle, &req);
+	buffer.allocation = allocate(req, properties, map);
+	VK(vkBindBufferMemory(rtg.device, buffer.handle, buffer.allocation.handle, buffer.allocation.offset));
+
 	return buffer;
 }
 
 void Helpers::destroy_buffer(AllocatedBuffer &&buffer) {
-	refsol::Helpers_destroy_buffer(rtg, &buffer);
+	vkDestroyBuffer(rtg.device, buffer.handle, nullptr);
+	buffer.handle = VK_NULL_HANDLE;
+	buffer.size = 0;
+
+	free(std::move(buffer.allocation));
 }
 
 
@@ -240,6 +294,15 @@ void Helpers::transfer_to_image(void const *data, size_t size, AllocatedImage &t
 }
 
 //----------------------------
+uint32_t Helpers::find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags flags) const {
+	for (uint32_t i = 0; i < memory_properties.memoryTypeCount; i++) {
+		const auto& memory_type = memory_properties.memoryTypes[i];
+		if ((type_filter & (1 << i)) != 0 && ((memory_type.propertyFlags & flags) == flags)) {
+			return i;
+		}
+	}
+	throw std::runtime_error("No suitable memory type found.");
+}
 
 VkFormat Helpers::find_image_format(std::vector< VkFormat > const &candidates, VkImageTiling tiling, VkFormatFeatureFlags features) const {
 	return refsol::Helpers_find_image_format(rtg, candidates, tiling, features);
@@ -247,9 +310,16 @@ VkFormat Helpers::find_image_format(std::vector< VkFormat > const &candidates, V
 
 VkShaderModule Helpers::create_shader_module(uint32_t const *code, size_t bytes) const {
 	VkShaderModule shader_module = VK_NULL_HANDLE;
-	refsol::Helpers_create_shader_module(rtg, code, bytes, &shader_module);
+	VkShaderModuleCreateInfo create_info{
+		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+		.codeSize = bytes,
+		.pCode = code		
+	};
+	VK(vkCreateShaderModule(rtg.device, &create_info, nullptr, &shader_module));
 	return shader_module;
 }
+
+
 
 //----------------------------
 
@@ -276,6 +346,23 @@ void Helpers::create() {
 	};
 
 	VK(vkAllocateCommandBuffers(rtg.device, &buffer_alloc_info, &transfer_command_buffer));
+
+	vkGetPhysicalDeviceMemoryProperties(rtg.physical_device, &memory_properties);
+
+	if (rtg.configuration.debug) {
+		std::cout << "Memory types:\n";
+		for (uint32_t i = 0; i < memory_properties.memoryTypeCount; i++) {
+			VkMemoryType const& type = memory_properties.memoryTypes[i];
+			std::cout << " [" << i << "] heap " << type.heapIndex << ", flags: " << string_VkMemoryPropertyFlags(type.propertyFlags) << '\n';
+		}
+
+		std::cout << "Memory heaps:\n";
+		for (uint32_t i = 0; i < memory_properties.memoryHeapCount; ++i) {
+			VkMemoryHeap const& heap = memory_properties.memoryHeaps[i];
+			std::cout << " [" << i << "] " << heap.size << " bytes, flags: " << string_VkMemoryHeapFlags(heap.flags) << '\n';
+		}
+		std::cout.flush();
+	}
 }
 
 void Helpers::destroy() {
