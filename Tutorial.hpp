@@ -77,9 +77,9 @@ struct Tutorial : RTG::Application {
 
 		struct World {
 			struct { float x, y, z, padding_; } SKY_DIRECTION;
-			struct { float x, y, z, padding_; } SKY_ENERGY;
+			struct { float r, g, b, padding_; } SKY_ENERGY;
 			struct { float x, y, z, padding_; } SUN_DIRECTION;
-			struct { float x, y, z, padding_; } SUN_ENERGY;
+			struct { float r, g, b, padding_; } SUN_ENERGY;
 		};
 
 		static_assert(sizeof(World) == 4 * 4 + 4 * 4 + 4 * 4 + 4 * 4, "World is the expected size.");		
@@ -177,6 +177,7 @@ struct Tutorial : RTG::Application {
 		uint32_t texture = 0;
 	};
 	std::vector<ObjectInstance> object_instances;
+	ObjectsPipeline::World world;
 
 
 	//--------------------------------------------------------------------

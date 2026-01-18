@@ -519,20 +519,24 @@ Tutorial::~Tutorial() {
 		if (workspace.Transforms.handle != VK_NULL_HANDLE) {
 			rtg.helpers.destroy_buffer(std::move(workspace.Transforms));
 		}
-
-		if (workspace.World.handle != VK_NULL_HANDLE) {
+		if (workspace.World_src.handle != VK_NULL_HANDLE) {
 			rtg.helpers.destroy_buffer(std::move(workspace.World_src));
 		}
-		if (workspace.World_src.handle != VK_NULL_HANDLE) {
+
+		if (workspace.World.handle != VK_NULL_HANDLE) {
 			rtg.helpers.destroy_buffer(std::move(workspace.World));
 		}
+		
+
 	}
-	workspaces.clear();
+	
 
 	if (descriptor_pool) {
 		vkDestroyDescriptorPool(rtg.device, descriptor_pool, nullptr);
 		descriptor_pool = nullptr;
 	}
+
+	workspaces.clear();
 
 	background_pipeline.destroy(rtg);
 	lines_pipeline.destroy(rtg);
@@ -655,6 +659,19 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 		}
 
 
+	}
+
+	{
+		assert(workspace.World_src.size == sizeof(world));
+		memcpy(workspace.World_src.allocation.data(), &world, sizeof(world));
+
+		assert(workspace.World_src.size == workspace.World.size);
+		VkBufferCopy copy_region{
+			.srcOffset = 0,
+			.dstOffset = 0,
+			.size = workspace.World_src.size
+		};
+		vkCmdCopyBuffer(workspace.command_buffer, workspace.World_src.handle, workspace.World.handle, 1, &copy_region);
 	}
 
 	if (!object_instances.empty()) {
@@ -846,10 +863,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 					static_cast<uint32_t>(descriptor_sets.size()), 
 					descriptor_sets.data(),
 					0,
-					nullptr);
-				
-
-				
+					nullptr);								
 			}
 			vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
 		}
@@ -872,7 +886,8 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			}
 
 			{
-				std::array<VkDescriptorSet, 1> descriptor_sets{
+				std::array<VkDescriptorSet, 2> descriptor_sets{
+					workspace.World_descriptors,
 					workspace.Transforms_descriptors
 				};
 
@@ -880,7 +895,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 					workspace.command_buffer,
 					VK_PIPELINE_BIND_POINT_GRAPHICS,
 					objects_pipeline.layout,
-					1,
+					0,
 					uint32_t(descriptor_sets.size()),
 					descriptor_sets.data(),
 					0,
@@ -936,6 +951,25 @@ void Tutorial::update(float dt) {
 		);
 
 	}
+
+	{
+		world.SKY_DIRECTION.x = 0.0f;
+		world.SKY_DIRECTION.y = 0.0f;
+		world.SKY_DIRECTION.z = 1.0f;
+
+		world.SKY_ENERGY.r = 0.1f;
+		world.SKY_ENERGY.g = 0.1f;
+		world.SKY_ENERGY.b = 0.2f;
+
+		world.SUN_DIRECTION.x = 6.0f / 23.0f;
+		world.SUN_DIRECTION.y = 13.0f / 23.0f;
+		world.SUN_DIRECTION.z = 18.0f / 23.0f;
+
+		world.SUN_ENERGY.r = 1.0f;
+		world.SUN_ENERGY.g = 1.0f;
+		world.SUN_ENERGY.b = 0.9f;
+	}
+
 	lines_vertices.clear();	
 
 	// Lissajous
