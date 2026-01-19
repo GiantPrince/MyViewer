@@ -2,7 +2,6 @@
 
 #include "RTG.hpp"
 #include "VK.hpp"
-#include "refsol.hpp"
 
 #include <utility>
 #include <cassert>
