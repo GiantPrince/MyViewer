@@ -109,12 +109,42 @@ void Helpers::destroy_buffer(AllocatedBuffer &&buffer) {
 
 Helpers::AllocatedImage Helpers::create_image(VkExtent2D const &extent, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, MapFlag map) {
 	AllocatedImage image;
-	refsol::Helpers_create_image(rtg, extent, format, tiling, usage, properties, (map == Mapped), &image);
+	image.extent = extent;
+	image.format = format;
+
+	VkImageCreateInfo create_info{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.imageType = VK_IMAGE_TYPE_2D,
+		.format = format,
+		.extent = {
+			.width = extent.width,
+			.height = extent.height,
+			.depth = 1
+		},
+		.mipLevels = 1,
+		.arrayLayers = 1,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.tiling = tiling,
+		.usage = usage,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
+	};
+	VK(vkCreateImage(rtg.device, &create_info, nullptr, &image.handle));
+
+	VkMemoryRequirements req;
+	vkGetImageMemoryRequirements(rtg.device, image.handle, &req);
+	image.allocation = allocate(req, properties, map);
+
+	VK(vkBindImageMemory(rtg.device, image.handle, image.allocation.handle, image.allocation.offset));
 	return image;
 }
 
 void Helpers::destroy_image(AllocatedImage &&image) {
-	refsol::Helpers_destroy_image(rtg, &image);
+	vkDestroyImage(rtg.device, image.handle, nullptr);
+	image.handle = VK_NULL_HANDLE;
+	image.extent = VkExtent2D{ .width = 0, .height = 0 };
+	image.format = VK_FORMAT_UNDEFINED;
+	free(std::move(image.allocation));
 }
 
 //----------------------------
@@ -305,7 +335,18 @@ uint32_t Helpers::find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags f
 }
 
 VkFormat Helpers::find_image_format(std::vector< VkFormat > const &candidates, VkImageTiling tiling, VkFormatFeatureFlags features) const {
-	return refsol::Helpers_find_image_format(rtg, candidates, tiling, features);
+	for (VkFormat format : candidates) {
+		VkFormatProperties properties;
+		vkGetPhysicalDeviceFormatProperties(rtg.physical_device, format, &properties);
+		if (tiling == VK_IMAGE_TILING_LINEAR && (properties.linearTilingFeatures & features) == features) {
+			return format;
+		}
+		else if (tiling == VK_IMAGE_TILING_OPTIMAL && (properties.optimalTilingFeatures & features) == features) {
+			return format;
+		}
+	}
+
+	throw std::runtime_error("No supported format matches the request.");
 }
 
 VkShaderModule Helpers::create_shader_module(uint32_t const *code, size_t bytes) const {
