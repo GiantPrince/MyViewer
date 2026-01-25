@@ -17,20 +17,23 @@
 #include <iostream>
 #include <set>
 
-void RTG::Configuration::parse(int argc, char **argv) {
+void RTG::Configuration::parse(int argc, char** argv) {
 	for (int argi = 1; argi < argc; ++argi) {
 		std::string arg = argv[argi];
 		if (arg == "--debug") {
 			debug = true;
-		} else if (arg == "--no-debug") {
+		}
+		else if (arg == "--no-debug") {
 			debug = false;
-		} else if (arg == "--physical-device") {
+		}
+		else if (arg == "--physical-device") {
 			if (argi + 1 >= argc) throw std::runtime_error("--physical-device requires a parameter (a device name).");
 			argi += 1;
 			physical_device_name = argv[argi];
-		} else if (arg == "--drawing-size") {
+		}
+		else if (arg == "--drawing-size") {
 			if (argi + 2 >= argc) throw std::runtime_error("--drawing-size requires two parameters (width and height).");
-			auto conv = [&](std::string const &what) {
+			auto conv = [&](std::string const& what) {
 				argi += 1;
 				std::string val = argv[argi];
 				for (size_t i = 0; i < val.size(); ++i) {
@@ -39,22 +42,46 @@ void RTG::Configuration::parse(int argc, char **argv) {
 					}
 				}
 				return std::stoul(val);
-			};
+				};
 			surface_extent.width = conv("width");
 			surface_extent.height = conv("height");
-		} else {
+		}
+		else {
 			throw std::runtime_error("Unrecognized argument '" + arg + "'.");
 		}
 	}
 }
 
-void RTG::Configuration::usage(std::function< void(const char *, const char *) > const &callback) {
+void RTG::Configuration::usage(std::function< void(const char*, const char*) > const& callback) {
 	callback("--debug, --no-debug", "Turn on/off debug and validation layers.");
 	callback("--physical-device <name>", "Run on the named physical device (guesses, otherwise).");
 	callback("--drawing-size <w> <h>", "Set the size of the surface to draw to.");
 }
 
-RTG::RTG(Configuration const &configuration_) : helpers(*this) {
+static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
+	VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+	VkDebugUtilsMessageTypeFlagsEXT type,
+	const VkDebugUtilsMessengerCallbackDataEXT* data,
+	void* user_data
+) {
+	if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+		std::cerr << "\x1b[91m" << "E: ";
+	}
+	else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+		std::cerr << "\x1b[33m" << "w: ";
+	}
+	else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+		std::cerr << "\x1b[90m" << "i: ";
+	}
+	else { //VERBOSE
+		std::cerr << "\x1b[90m" << "v: ";
+	}
+	std::cerr << data->pMessage << "\x1b[0m" << std::endl;
+
+	return VK_FALSE;
+}
+
+RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 
 	//copy input configuration:
 	configuration = configuration_;
@@ -62,12 +89,77 @@ RTG::RTG(Configuration const &configuration_) : helpers(*this) {
 	//fill in flags/extensions/layers information:
 
 	//create the `instance` (main handle to Vulkan library):
-	refsol::RTG_constructor_create_instance(
-		configuration.application_info,
-		configuration.debug,
-		&instance,
-		&debug_messenger
-	);
+	
+	VkInstanceCreateFlags instance_flags = 0;
+	std::vector<const char*> instance_extensions;
+	std::vector<const char*> instance_layers;
+
+#if defined(__APPLE__)
+	instance_flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+	instance_extensions.emplace_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+	instance_extensions.emplace_back(VK_KHR_SURFACE_EXTENSION_NAME);
+	instance_extensions.emplace_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
+#endif
+
+	{
+		// add extensions needed by glfw
+		glfwInit();
+		if (!glfwVulkanSupported()) {
+			throw std::runtime_error("GLFW reports Vulkan is not supported.");
+		}
+
+		uint32_t count;
+
+		const char** extensions = glfwGetRequiredInstanceExtensions(&count);
+		if (extensions == nullptr) {
+			throw std::runtime_error("GLFW failed to return a list of requested instance extensions. Perhaps it was not compiled with Vulkan support.");
+		}
+		for (uint32_t i = 0; i < count; ++i) {
+			instance_extensions.emplace_back(extensions[i]);
+		}
+	}
+
+	// add extensions and layers for debugging
+	if (configuration.debug) {
+		instance_extensions.emplace_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+		instance_layers.emplace_back("VK_LAYER_KHRONOS_validation");
+	}
+
+	VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info{
+		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+		.messageSeverity = 
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT	|
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+		.messageType =
+			VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
+			| VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+			| VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+		.pfnUserCallback = debug_callback,
+		.pUserData = nullptr
+	};
+
+	VkInstanceCreateInfo instance_create_info{
+		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+		.pNext = (configuration.debug ? &debug_messenger_create_info : nullptr),
+		.flags = instance_flags,
+		.pApplicationInfo = &configuration.application_info,
+		.enabledLayerCount = static_cast<uint32_t>(instance_layers.size()),
+		.ppEnabledLayerNames = instance_layers.data(),
+		.enabledExtensionCount = static_cast<uint32_t>(instance_extensions.size()),
+		.ppEnabledExtensionNames = instance_extensions.data()
+	};
+	VK(vkCreateInstance(&instance_create_info, nullptr, &instance));
+
+	if (configuration.debug) {
+		PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT =
+			(PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+		if (!vkCreateDebugUtilsMessengerEXT) {
+			throw std::runtime_error("Failed to lookup debug utils create fn.");
+		}
+		VK(vkCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, nullptr, &debug_messenger));
+	}
 
 	//create the `window` and `surface` (where things get drawn):
 	refsol::RTG_constructor_create_surface(
@@ -118,7 +210,7 @@ RTG::RTG(Configuration const &configuration_) : helpers(*this) {
 
 	//create workspace resources:
 	workspaces.resize(configuration.workspaces);
-	for (auto &workspace : workspaces) {
+	for (auto& workspace : workspaces) {
 		//refsol::RTG_constructor_per_workspace(device, &workspace);
 		{
 			//create workspace fences
@@ -149,7 +241,7 @@ RTG::~RTG() {
 	}
 
 	//destroy workspace resources:
-	for (auto &workspace : workspaces) {
+	for (auto& workspace : workspaces) {
 		//refsol::RTG_destructor_per_workspace(device, &workspace);
 		if (workspace.workspace_available != VK_NULL_HANDLE) {
 			vkDestroyFence(device, workspace.workspace_available, nullptr);
@@ -169,8 +261,35 @@ RTG::~RTG() {
 	helpers.destroy();
 
 	//destroy the rest of the resources:
-	refsol::RTG_destructor( &device, &surface, &window, &debug_messenger, &instance );
+	//refsol::RTG_destructor( &device, &surface, &window, &debug_messenger, &instance );
+	if (device != VK_NULL_HANDLE) {
+		vkDestroyDevice(device, nullptr);
+		device = VK_NULL_HANDLE;
+	}
 
+	if (surface != VK_NULL_HANDLE) {
+		vkDestroySurfaceKHR(instance, surface, nullptr);
+		surface = VK_NULL_HANDLE;
+	}
+
+	if (window != VK_NULL_HANDLE) {
+		glfwDestroyWindow(window);
+		window = nullptr;
+	}
+
+	if (debug_messenger != VK_NULL_HANDLE) {
+		PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT =
+			(PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+		if (vkDestroyDebugUtilsMessengerEXT) {
+			vkDestroyDebugUtilsMessengerEXT(instance, debug_messenger, nullptr);
+			debug_messenger = VK_NULL_HANDLE;
+		}
+	}
+
+	if (instance != VK_NULL_HANDLE) {
+		vkDestroyInstance(instance, nullptr);
+		instance = VK_NULL_HANDLE;
+	}
 }
 
 
@@ -424,7 +543,7 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 	event_queue->emplace_back(event);
 }
 
-void RTG::run(Application &application) {
+void RTG::run(Application& application) {
 	// refsol::RTG_run(*this, application);
 	// initial on_swapchain
 	auto on_swapchain = [&, this]() {
@@ -434,7 +553,7 @@ void RTG::run(Application &application) {
 			.image_views = swapchain_image_views
 			});
 		};
-	
+
 	on_swapchain();
 
 
@@ -473,11 +592,11 @@ void RTG::run(Application &application) {
 			next_workspace = (next_workspace + 1) % workspaces.size();
 			VK(vkWaitForFences(device, 1, &workspaces[workspace_index].workspace_available, VK_TRUE, UINT64_MAX));
 
-			VK(vkResetFences(device, 1, &workspaces[workspace_index].workspace_available));			
+			VK(vkResetFences(device, 1, &workspaces[workspace_index].workspace_available));
 		}
 
 		uint32_t image_index = -1U;
-retry:
+	retry:
 		if (VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, workspaces[workspace_index].image_available, VK_NULL_HANDLE, &image_index);
 			result == VK_ERROR_OUT_OF_DATE_KHR) {
 			std::cerr << "Recreating swapchain because vkAcquireNextImageKHR returned " << string_VkResult(result) << "." << std::endl;
@@ -485,7 +604,7 @@ retry:
 			recreate_swapchain();
 			on_swapchain();
 
-			goto retry;			
+			goto retry;
 		}
 		else if (result == VK_SUBOPTIMAL_KHR) {
 			std::cerr << "Suboptimal swapchain format -- ignoring for the moment." << std::endl;
@@ -501,7 +620,7 @@ retry:
 			.image_available = workspaces[workspace_index].image_available,
 			.image_done = swapchain_image_dones[image_index],
 			.workspace_available = workspaces[workspace_index].workspace_available
-		});
+			});
 
 		{
 			// queue the work for presentation
