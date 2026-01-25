@@ -119,7 +119,24 @@ RTG::RTG(Configuration const &configuration_) : helpers(*this) {
 	//create workspace resources:
 	workspaces.resize(configuration.workspaces);
 	for (auto &workspace : workspaces) {
-		refsol::RTG_constructor_per_workspace(device, &workspace);
+		//refsol::RTG_constructor_per_workspace(device, &workspace);
+		{
+			//create workspace fences
+			VkFenceCreateInfo create_info{
+				.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+				.flags = VK_FENCE_CREATE_SIGNALED_BIT
+			};
+
+			VK(vkCreateFence(device, &create_info, nullptr, &workspace.workspace_available));
+		}
+
+		{
+			VkSemaphoreCreateInfo create_info{
+				.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
+			};
+			VK(vkCreateSemaphore(device, &create_info, nullptr, &workspace.image_available));
+
+		}
 	}
 
 }
@@ -133,7 +150,15 @@ RTG::~RTG() {
 
 	//destroy workspace resources:
 	for (auto &workspace : workspaces) {
-		refsol::RTG_destructor_per_workspace(device, &workspace);
+		//refsol::RTG_destructor_per_workspace(device, &workspace);
+		if (workspace.workspace_available != VK_NULL_HANDLE) {
+			vkDestroyFence(device, workspace.workspace_available, nullptr);
+			workspace.workspace_available = VK_NULL_HANDLE;
+		}
+		if (workspace.image_available != VK_NULL_HANDLE) {
+			vkDestroySemaphore(device, workspace.image_available, nullptr);
+			workspace.image_available = VK_NULL_HANDLE;
+		}
 	}
 	workspaces.clear();
 
@@ -213,6 +238,7 @@ void RTG::recreate_swapchain() {
 			create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		}
 
+		VK(vkCreateSwapchainKHR(device, &create_info, nullptr, &swapchain));
 	}
 
 	{

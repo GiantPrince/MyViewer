@@ -133,7 +133,7 @@ struct RTG {
 	// (The bulk of per-workspace data will be managed by the Application.)
 	struct PerWorkspace {
 		VkFence workspace_available = VK_NULL_HANDLE; //workspace is ready for a new render
-		VkSemaphore image_available = VK_NULL_HANDLE; //the image is ready to write to
+		VkSemaphore image_available = VK_NULL_HANDLE; //the image is ready to write to		
 	};
 	std::vector< PerWorkspace > workspaces;
 	//^^ this size could probably be hardcoded (it will almost always be 2 unless you want bottlenecks!), but I'm leaving it variable at the moment.
