@@ -640,7 +640,7 @@ Tutorial::~Tutorial() {
 
 	if (descriptor_pool) {
 		vkDestroyDescriptorPool(rtg.device, descriptor_pool, nullptr);
-		descriptor_pool = nullptr;
+		descriptor_pool = VK_NULL_HANDLE;
 	}
 
 	workspaces.clear();
@@ -1144,6 +1144,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 void Tutorial::update(float dt) {
 	time += dt;
 
+	if (camera_mode == CameraMode::Scene)
 	{
 		float ang = float(M_PI) * 2.0f * 20.0f * (time / 60.0f);
 		CLIP_FROM_WORLD = perspective(
@@ -1159,25 +1160,41 @@ void Tutorial::update(float dt) {
 
 	}
 
-	{
-		world.SKY_DIRECTION.x = 0.0f;
-		world.SKY_DIRECTION.y = 0.0f;
-		world.SKY_DIRECTION.z = 1.0f;
-
-		world.SKY_ENERGY.r = 0.1f;
-		world.SKY_ENERGY.g = 0.1f;
-		world.SKY_ENERGY.b = 0.2f;
-
-		world.SUN_DIRECTION.x = 6.0f / 23.0f;
-		world.SUN_DIRECTION.y = 13.0f / 23.0f;
-		world.SUN_DIRECTION.z = 18.0f / 23.0f;
-
-		world.SUN_ENERGY.r = 1.0f;
-		world.SUN_ENERGY.g = 1.0f;
-		world.SUN_ENERGY.b = 0.9f;
+	else if (camera_mode == CameraMode::Free) {
+		CLIP_FROM_WORLD = perspective(
+			free_camera.fov,
+			rtg.swapchain_extent.width / float(rtg.swapchain_extent.height),
+			free_camera.near,
+			free_camera.far
+		) * orbit(
+			free_camera.target_x, free_camera.target_y, free_camera.target_z,
+			free_camera.azimuth, free_camera.elevation, free_camera.radius
+		);
+	}
+	else {
+		assert(0 && "only two camera modes");
 	}
 
 	lines_vertices.clear();	
+
+{
+	world.SKY_DIRECTION.x = 0.0f;
+	world.SKY_DIRECTION.y = 0.0f;
+	world.SKY_DIRECTION.z = 1.0f;
+
+	world.SKY_ENERGY.r = 0.1f;
+	world.SKY_ENERGY.g = 0.1f;
+	world.SKY_ENERGY.b = 0.2f;
+
+	world.SUN_DIRECTION.x = 6.0f / 23.0f;
+	world.SUN_DIRECTION.y = 13.0f / 23.0f;
+	world.SUN_DIRECTION.z = 18.0f / 23.0f;
+
+	world.SUN_ENERGY.r = 1.0f;
+	world.SUN_ENERGY.g = 1.0f;
+	world.SUN_ENERGY.b = 0.9f;
+}
+
 
 	// Lissajous
 	/*float Ax = 0.5f;

@@ -167,6 +167,23 @@ struct Tutorial : RTG::Application {
 
 	float time = 0.0f;
 
+	enum class CameraMode {
+		Scene = 0,
+		Free = 1
+	} camera_mode = CameraMode::Free;
+
+	//used when camera_mode == CameraMode::Free:
+	struct OrbitCamera {
+		float target_x = 0, target_y = 0, target_z = 0;
+		float radius = 2.0f;
+		float azimuth = 0.0f;
+		float elevation = 0.25 * float(M_PI);
+		float fov = 60.0f * float(M_PI) / 180.0f;
+		float near = 0.1f;
+		float far = 1000.0f;
+	} free_camera;
+
+	//computed from the current camera (as set by camera_mode) during update():
 	mat4 CLIP_FROM_WORLD;
 
 	std::vector<LinesPipeline::Vertex> lines_vertices;
