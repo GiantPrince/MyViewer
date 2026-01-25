@@ -1186,9 +1186,9 @@ void Tutorial::update(float dt) {
 	world.SKY_ENERGY.g = 0.1f;
 	world.SKY_ENERGY.b = 0.2f;
 
-	world.SUN_DIRECTION.x = 6.0f / 23.0f;
-	world.SUN_DIRECTION.y = 13.0f / 23.0f;
-	world.SUN_DIRECTION.z = 18.0f / 23.0f;
+	world.SUN_DIRECTION.x = std::cos(time);
+	world.SUN_DIRECTION.y = 18.0f / 23.0f;
+	world.SUN_DIRECTION.z = std::sin(time);
 
 	world.SUN_ENERGY.r = 1.0f;
 	world.SUN_ENERGY.g = 1.0f;
@@ -1239,12 +1239,12 @@ void Tutorial::update(float dt) {
 
 	float step = 0.01f;
 	for (float t = 0; t < 2 * float(M_PI); t += step) {
-		float x_t = (R + r * std::cos(q * t)) * std::cos(p * t);
-		float y_t = (R + r * std::cos(q * t)) * std::sin(p * t);
+		float x_t = (R + r * std::cos(q * t)) * std::cos(p * t) + 10;
+		float y_t = (R + r * std::cos(q * t)) * std::sin(p * t) + 10;
 		float z_t = r * std::sin(q * t);
 
-		float x_t_1 = (R + r * std::cos(q * (t + step))) * std::cos(p * (t + step));
-		float y_t_1 = (R + r * std::cos(q * (t + step))) * std::sin(p * (t + step));
+		float x_t_1 = (R + r * std::cos(q * (t + step))) * std::cos(p * (t + step)) + 10;
+		float y_t_1 = (R + r * std::cos(q * (t + step))) * std::sin(p * (t + step)) + 10;
 		float z_t_1 = r * std::sin(q * (t + step));
 
 		lines_vertices.emplace_back(PosColVertex{
