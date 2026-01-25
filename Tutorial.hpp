@@ -6,6 +6,8 @@
 #include "PosNorTexVertex.hpp"
 #include "mat4.hpp"
 
+#include <GLFW/glfw3.h>
+
 struct Tutorial : RTG::Application {
 
 	Tutorial(RTG &);
@@ -164,6 +166,8 @@ struct Tutorial : RTG::Application {
 
 	virtual void update(float dt) override;
 	virtual void on_input(InputEvent const &) override;
+
+	std::function<void(InputEvent const&)> action;
 
 	float time = 0.0f;
 
