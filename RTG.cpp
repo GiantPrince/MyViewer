@@ -1,7 +1,6 @@
 #include "RTG.hpp"
 
 #include "VK.hpp"
-#include "refsol.hpp"
 
 #include <vulkan/vulkan_core.h>
 #if defined(__APPLE__)
@@ -161,46 +160,212 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 		VK(vkCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, nullptr, &debug_messenger));
 	}
 
-	//create the `window` and `surface` (where things get drawn):
-	refsol::RTG_constructor_create_surface(
-		configuration.application_info,
-		configuration.debug,
-		configuration.surface_extent,
-		instance,
-		&window,
-		&surface
-	);
+	//create the `window` and `surface` (where things get drawn):	
+	{
+		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+		window = glfwCreateWindow(
+			configuration.surface_extent.width,
+			configuration.surface_extent.height,
+			configuration.application_info.pApplicationName,
+			nullptr,
+			nullptr
+		);
+
+		if (!window) {
+			throw std::runtime_error("GLFW failed to create a window.");
+		}
+
+		VK(glfwCreateWindowSurface(instance, window, nullptr, &surface));
+	}
 
 	//select the `physical_device` -- the gpu that will be used to draw:
-	refsol::RTG_constructor_select_physical_device(
-		configuration.debug,
-		configuration.physical_device_name,
-		instance,
-		&physical_device
-	);
+	std::vector<std::string> physical_device_names;
+	{
+		uint32_t count;
+		VK(vkEnumeratePhysicalDevices(instance, &count, nullptr));
+		std::vector<VkPhysicalDevice> physical_devices(count);
+		VK(vkEnumeratePhysicalDevices(instance, &count, physical_devices.data()));
+
+		uint32_t best_score = 0;
+
+		for (auto const& pd : physical_devices) {
+			VkPhysicalDeviceProperties properties;
+			vkGetPhysicalDeviceProperties(pd, &properties);
+
+			VkPhysicalDeviceFeatures features;
+			vkGetPhysicalDeviceFeatures(pd, &features);
+
+			physical_device_names.emplace_back(properties.deviceName);
+
+			if (!configuration.physical_device_name.empty()) {
+				if (configuration.physical_device_name == properties.deviceName) {
+					if (physical_device) {
+						std::cerr << "WARNING: have two physical devices with the name '" << properties.deviceName << "'; using the first to be enumerated." << std::endl;
+					}
+					else {
+						physical_device = pd;
+					}
+				}
+			}
+			else {
+				uint32_t score = 1;
+				if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+					score += 0x8000;
+				}
+
+				if (score > best_score) {
+					best_score = score;
+					physical_device = pd;
+				}
+			}
+		}
+	}
+
+	if (physical_device == VK_NULL_HANDLE) {
+		// report error
+		std::cerr << "Physical devices:\n";
+		for (std::string const& name : physical_device_names) {
+			std::cerr << "    " << name << "\n";
+		}
+		std::cerr.flush();
+
+		if (!configuration.physical_device_name.empty()) {
+			throw std::runtime_error("No physical device with name '" + configuration.physical_device_name + "'.");
+		}
+		else {
+			throw std::runtime_error("No suitable GPU found.");
+		}
+	}
+
+	{
+		VkPhysicalDeviceProperties properties;
+		vkGetPhysicalDeviceProperties(physical_device, &properties);
+		std::cout << "Selected physical device: '" << properties.deviceName << "'." << std::endl;
+	}
 
 	//select the `surface_format` and `present_mode` which control how colors are represented on the surface and how new images are supplied to the surface:
-	refsol::RTG_constructor_select_format_and_mode(
-		configuration.debug,
-		configuration.surface_formats,
-		configuration.present_modes,
-		physical_device,
-		surface,
-		&surface_format,
-		&present_mode
-	);
+	std::vector<VkSurfaceFormatKHR> formats;
+	std::vector<VkPresentModeKHR> present_modes;
+
+	{
+		uint32_t count = 0;
+		VK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, nullptr));
+		formats.resize(count);
+		VK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats.data()));
+	}
+
+	{
+		uint32_t count = 0;
+		VK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr));
+		present_modes.resize(count);
+		VK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes.data()));
+	}
+
+	surface_format = [&]() {
+		for (auto const& config_format : configuration.surface_formats) {
+			for (const auto& format : formats) {
+				if (config_format.format == format.format && config_format.colorSpace == format.colorSpace) {
+					return format;
+				}
+			}
+		}
+		throw std::runtime_error("No format matching requested format(s) found.");
+	}();
+
+	present_mode = [&]() {
+		for (auto const& config_mode : configuration.present_modes) {
+			for (auto const& mode : present_modes) {
+				if (config_mode == mode) {
+					return mode;
+				}
+			}
+		}
+		throw std::runtime_error("No present mode matching requested mode(s) found.");
+	}();
+
 
 	//create the `device` (logical interface to the GPU) and the `queue`s to which we can submit commands:
-	refsol::RTG_constructor_create_device(
-		configuration.debug,
-		physical_device,
-		surface,
-		&device,
-		&graphics_queue_family,
-		&graphics_queue,
-		&present_queue_family,
-		&present_queue
-	);
+	{
+		{
+			// look up queue indices
+			uint32_t count = 0;
+			vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, nullptr);
+			std::vector<VkQueueFamilyProperties> queue_families(count);
+			vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, queue_families.data());
+
+			for (auto const &queue_family : queue_families) {
+				uint32_t i = uint32_t(&queue_family - &queue_families[0]);
+				if (queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+					if (!graphics_queue_family)
+						graphics_queue_family = i;
+				}
+
+				VkBool32 present_support = VK_FALSE;
+				VK(vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &present_support));
+				if (present_support == VK_TRUE) {
+					if (!present_queue_family) {
+						present_queue_family = i;
+					}
+				}
+			}
+
+		}
+
+		if (!graphics_queue_family) {
+			throw std::runtime_error("No queue with graphics support.");
+		}
+
+		if (!present_queue_family) {
+			throw std::runtime_error("No queue with present support.");
+		}
+
+		std::vector<const char*> device_extensions;
+
+		{
+#if defined(__APPLE__)
+			device_extensions.emplace_back(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
+#endif
+			device_extensions.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+		}
+
+		{
+			std::vector<VkDeviceQueueCreateInfo> queue_create_info;
+			std::set<uint32_t> unique_queue_families{
+				graphics_queue_family.value(),
+				present_queue_family.value()
+			};
+
+			float queue_priorities[1] = { 1.0f };
+
+			for (uint32_t queue_family : unique_queue_families) {
+				queue_create_info.emplace_back(
+					VkDeviceQueueCreateInfo{
+						.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+						.queueFamilyIndex = queue_family,
+						.queueCount = 1,
+						.pQueuePriorities = queue_priorities
+					}
+				);
+
+			}
+
+			VkDeviceCreateInfo device_create_info{
+				.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+				.queueCreateInfoCount = static_cast<uint32_t>(queue_create_info.size()),
+				.pQueueCreateInfos = queue_create_info.data(),
+				.enabledLayerCount = 0,
+				.ppEnabledLayerNames = nullptr,
+				.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size()),
+				.ppEnabledExtensionNames = device_extensions.data(),
+				.pEnabledFeatures = nullptr
+			};
+
+			VK(vkCreateDevice(physical_device, &device_create_info, nullptr, &device));
+			vkGetDeviceQueue(device, graphics_queue_family.value(), 0, &graphics_queue);
+			vkGetDeviceQueue(device, present_queue_family.value(), 0, &present_queue);
+		}
+	}
 
 	//run any resource creation required by Helpers structure:
 	helpers.create();
