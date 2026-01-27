@@ -8,11 +8,14 @@
 #include <vulkan/vulkan_metal.h> //for VK_EXT_METAL_SURFACE_EXTENSION_NAME
 #endif
 #include <vulkan/vk_enum_string_helper.h> //useful for debug output
+#include <vulkan/utility/vk_format_utils.h> //for getting format sizes
 #include <GLFW/glfw3.h>
 
 #include <cassert>
 #include <chrono>
 #include <cstring>
+#include <sstream>
+#include <fstream>
 #include <iostream>
 #include <set>
 
@@ -45,6 +48,9 @@ void RTG::Configuration::parse(int argc, char** argv) {
 			surface_extent.width = conv("width");
 			surface_extent.height = conv("height");
 		}
+		else if (arg == "--headless") {
+			headless = true;
+		}
 		else {
 			throw std::runtime_error("Unrecognized argument '" + arg + "'.");
 		}
@@ -55,6 +61,7 @@ void RTG::Configuration::usage(std::function< void(const char*, const char*) > c
 	callback("--debug, --no-debug", "Turn on/off debug and validation layers.");
 	callback("--physical-device <name>", "Run on the named physical device (guesses, otherwise).");
 	callback("--drawing-size <w> <h>", "Set the size of the surface to draw to.");
+	callback("--headless", "Don't create a window; read events from stdin.");
 }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
@@ -88,7 +95,7 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 	//fill in flags/extensions/layers information:
 
 	//create the `instance` (main handle to Vulkan library):
-	
+
 	VkInstanceCreateFlags instance_flags = 0;
 	std::vector<const char*> instance_extensions;
 	std::vector<const char*> instance_layers;
@@ -100,6 +107,7 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 	instance_extensions.emplace_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
 #endif
 
+	if (!configuration.headless)
 	{
 		// add extensions needed by glfw
 		glfwInit();
@@ -126,9 +134,9 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 
 	VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info{
 		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-		.messageSeverity = 
+		.messageSeverity =
 		VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-		VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT	|
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
 		VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
 		VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
 		.messageType =
@@ -160,7 +168,8 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 		VK(vkCreateDebugUtilsMessengerEXT(instance, &debug_messenger_create_info, nullptr, &debug_messenger));
 	}
 
-	//create the `window` and `surface` (where things get drawn):	
+	if (!configuration.headless)
+		//create the `window` and `surface` (where things get drawn):	
 	{
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
@@ -245,45 +254,67 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 	}
 
 	//select the `surface_format` and `present_mode` which control how colors are represented on the surface and how new images are supplied to the surface:
-	std::vector<VkSurfaceFormatKHR> formats;
-	std::vector<VkPresentModeKHR> present_modes;
+	if (configuration.headless) {
+		if (configuration.surface_formats.empty()) {
+			throw std::runtime_error("No surface formats requested.");
+		}
 
-	{
-		uint32_t count = 0;
-		VK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, nullptr));
-		formats.resize(count);
-		VK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats.data()));
-	}
+		surface_format = configuration.surface_formats[0];
 
-	{
-		uint32_t count = 0;
-		VK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr));
-		present_modes.resize(count);
-		VK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes.data()));
-	}
-
-	surface_format = [&]() {
-		for (auto const& config_format : configuration.surface_formats) {
-			for (const auto& format : formats) {
-				if (config_format.format == format.format && config_format.colorSpace == format.colorSpace) {
-					return format;
-				}
+		bool have_fifo = false;
+		for (auto const& mode : configuration.present_modes) {
+			if (mode == VK_PRESENT_MODE_FIFO_KHR) {
+				have_fifo = true;
+				break;
 			}
 		}
-		throw std::runtime_error("No format matching requested format(s) found.");
-	}();
+		if (!have_fifo) {
+			throw std::runtime_error("Configured present modes do not contain VK_PRESENT_MODE_FIFO_KHR.");
+		}
+		present_mode = VK_PRESENT_MODE_FIFO_KHR;
 
-	present_mode = [&]() {
-		for (auto const& config_mode : configuration.present_modes) {
-			for (auto const& mode : present_modes) {
-				if (config_mode == mode) {
-					return mode;
+		present_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	}
+	else {
+		std::vector<VkSurfaceFormatKHR> formats;
+		std::vector<VkPresentModeKHR> present_modes;
+
+		{
+			uint32_t count = 0;
+			VK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, nullptr));
+			formats.resize(count);
+			VK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats.data()));
+		}
+
+		{
+			uint32_t count = 0;
+			VK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr));
+			present_modes.resize(count);
+			VK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes.data()));
+		}
+
+		surface_format = [&]() {
+			for (auto const& config_format : configuration.surface_formats) {
+				for (const auto& format : formats) {
+					if (config_format.format == format.format && config_format.colorSpace == format.colorSpace) {
+						return format;
+					}
 				}
 			}
-		}
-		throw std::runtime_error("No present mode matching requested mode(s) found.");
-	}();
+			throw std::runtime_error("No format matching requested format(s) found.");
+			}();
 
+		present_mode = [&]() {
+			for (auto const& config_mode : configuration.present_modes) {
+				for (auto const& mode : present_modes) {
+					if (config_mode == mode) {
+						return mode;
+					}
+				}
+			}
+			throw std::runtime_error("No present mode matching requested mode(s) found.");
+			}();
+	}
 
 	//create the `device` (logical interface to the GPU) and the `queue`s to which we can submit commands:
 	{
@@ -294,24 +325,29 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 			std::vector<VkQueueFamilyProperties> queue_families(count);
 			vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, queue_families.data());
 
-			for (auto const &queue_family : queue_families) {
+			for (auto const& queue_family : queue_families) {
 				uint32_t i = uint32_t(&queue_family - &queue_families[0]);
 				if (queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
 					if (!graphics_queue_family)
 						graphics_queue_family = i;
 				}
 
-				VkBool32 present_support = VK_FALSE;
-				VK(vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &present_support));
-				if (present_support == VK_TRUE) {
-					if (!present_queue_family) {
-						present_queue_family = i;
+				if (!configuration.headless) {
+					VkBool32 present_support = VK_FALSE;
+					VK(vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &present_support));
+					if (present_support == VK_TRUE) {
+						if (!present_queue_family) {
+							present_queue_family = i;
+						}
 					}
-				}
+				}				
 			}
 
 		}
 
+		if (configuration.headless) {
+			present_queue_family = graphics_queue_family;
+		}
 		if (!graphics_queue_family) {
 			throw std::runtime_error("No queue with graphics support.");
 		}
@@ -326,7 +362,10 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 #if defined(__APPLE__)
 			device_extensions.emplace_back(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
 #endif
-			device_extensions.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+			if (!configuration.headless) {
+				device_extensions.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+			}
+			
 		}
 
 		{
@@ -479,58 +518,181 @@ void RTG::recreate_swapchain() {
 		destroy_swapchain();
 	}
 
-	// determine size, image count, and transform for swapchain
-	VkSurfaceCapabilitiesKHR capabilities;
-	VK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities));
+	if (configuration.headless) {
+		assert(surface == VK_NULL_HANDLE);
 
-	swapchain_extent = capabilities.currentExtent;
+		//make a fake swapchain:
 
-	uint32_t requested_count = capabilities.minImageCount;
-	if (capabilities.maxImageCount != 0) {
-		requested_count = std::min(requested_count, capabilities.maxImageCount);
-	}
+		//set extent from configuration
+		swapchain_extent = configuration.surface_extent;
 
-	{	// create swapchain
-		VkSwapchainCreateInfoKHR create_info{
-			.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-			.surface = surface,
-			.minImageCount = requested_count,
-			.imageFormat = surface_format.format,
-			.imageColorSpace = surface_format.colorSpace,
-			.imageExtent = swapchain_extent,
-			.imageArrayLayers = 1,
-			.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-			.preTransform = capabilities.currentTransform,
-			.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-			.presentMode = present_mode,
-			.clipped = VK_TRUE,
-			.oldSwapchain = VK_NULL_HANDLE
-		};
+		//set number of images to 3
+		uint32_t requested_count = 3;
 
-		std::vector<uint32_t> queue_family_indices{
-			graphics_queue_family.value(),
-			present_queue_family.value()
-		};
+		//create headless_command_pool
+		{
+			assert(headless_command_pool == VK_NULL_HANDLE);
+			VkCommandPoolCreateInfo command_pool_create_info{
+			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+			.flags = 0,
+			.queueFamilyIndex = graphics_queue_family.value(),
+			};
 
-		if (queue_family_indices[0] != queue_family_indices[1]) {
-			//if images will be presented on a different queue, make sure they are shared:
-			create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-			create_info.queueFamilyIndexCount = static_cast<uint32_t>(queue_family_indices.size());
-			create_info.pQueueFamilyIndices = queue_family_indices.data();
-		}
-		else {
-			create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			VK(vkCreateCommandPool(device, &command_pool_create_info, nullptr, &headless_command_pool));
 		}
 
-		VK(vkCreateSwapchainKHR(device, &create_info, nullptr, &swapchain));
-	}
+		//create headless_swapchain
+		assert(headless_swapchain.empty());
+		headless_swapchain.reserve(requested_count);
+		for (uint32_t i = 0; i < requested_count; i++) {
+			HeadlessSwapchainImage& h = headless_swapchain.emplace_back();
 
-	{
-		// get swapchain images
-		uint32_t count = 0;
-		VK(vkGetSwapchainImagesKHR(device, swapchain, &count, nullptr));
-		swapchain_images.resize(count);
-		VK(vkGetSwapchainImagesKHR(device, swapchain, &count, swapchain_images.data()));
+			//allocate image data			
+			h.image = helpers.create_image(
+				swapchain_extent,
+				surface_format.format,
+				VK_IMAGE_TILING_OPTIMAL,
+				VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+			);
+
+			//allocate buffer data
+			h.buffer = helpers.create_buffer(
+				swapchain_extent.width * swapchain_extent.height * vkuFormatTexelBlockSize(surface_format.format) / vkuFormatTexelsPerBlock(surface_format.format),
+				VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+				Helpers::Mapped
+			);
+
+			//create and record copy command
+			{
+				VkCommandBufferAllocateInfo alloc_info{
+					.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+					.commandPool = headless_command_pool,
+					.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+					.commandBufferCount = 1,
+				};
+
+				VK(vkAllocateCommandBuffers(device, &alloc_info, &h.copy_command));
+
+				VkCommandBufferBeginInfo begin_info{
+					.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+					.flags = 0
+				};
+
+				VK(vkBeginCommandBuffer(h.copy_command, &begin_info));
+
+				VkBufferImageCopy region{
+					.bufferOffset = 0,
+					.bufferRowLength = swapchain_extent.width,
+					.bufferImageHeight = swapchain_extent.height,
+					.imageSubresource{
+						.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+						.mipLevel = 0,
+						.baseArrayLayer = 0,
+						.layerCount = 1
+					},
+					.imageOffset{.x = 0, .y = 0, .z = 0 },
+					.imageExtent{
+						.width = swapchain_extent.width,
+						.height = swapchain_extent.height,
+						.depth = 1
+					}
+				};
+
+				vkCmdCopyImageToBuffer(
+					h.copy_command,
+					h.image.handle,
+					VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+					h.buffer.handle,
+					1,
+					&region
+				);
+
+				VK(vkEndCommandBuffer(h.copy_command));
+
+
+			}
+
+			{
+				VkFenceCreateInfo create_info{
+					.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+					.flags = VK_FENCE_CREATE_SIGNALED_BIT
+				};
+
+				VK(vkCreateFence(device, &create_info, nullptr, &h.image_presented));
+			}
+
+
+		}
+
+
+		//fill in swapchain_images
+		assert(swapchain_images.empty());
+		swapchain_images.assign(requested_count, VK_NULL_HANDLE);
+		for (uint32_t i = 0; i < requested_count; i++) {
+			swapchain_images[i] = headless_swapchain[i].image.handle;
+		}
+
+
+	}
+	else {
+		assert(surface != VK_NULL_HANDLE);
+
+		// determine size, image count, and transform for swapchain
+		VkSurfaceCapabilitiesKHR capabilities;
+		VK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities));
+
+		swapchain_extent = capabilities.currentExtent;
+
+		uint32_t requested_count = capabilities.minImageCount;
+		if (capabilities.maxImageCount != 0) {
+			requested_count = std::min(requested_count, capabilities.maxImageCount);
+		}
+
+		{	// create swapchain
+			VkSwapchainCreateInfoKHR create_info{
+				.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+				.surface = surface,
+				.minImageCount = requested_count,
+				.imageFormat = surface_format.format,
+				.imageColorSpace = surface_format.colorSpace,
+				.imageExtent = swapchain_extent,
+				.imageArrayLayers = 1,
+				.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+				.preTransform = capabilities.currentTransform,
+				.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+				.presentMode = present_mode,
+				.clipped = VK_TRUE,
+				.oldSwapchain = VK_NULL_HANDLE
+			};
+
+			std::vector<uint32_t> queue_family_indices{
+				graphics_queue_family.value(),
+				present_queue_family.value()
+			};
+
+			if (queue_family_indices[0] != queue_family_indices[1]) {
+				//if images will be presented on a different queue, make sure they are shared:
+				create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+				create_info.queueFamilyIndexCount = static_cast<uint32_t>(queue_family_indices.size());
+				create_info.pQueueFamilyIndices = queue_family_indices.data();
+			}
+			else {
+				create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			}
+
+			VK(vkCreateSwapchainKHR(device, &create_info, nullptr, &swapchain));
+		}
+
+		{
+			// get swapchain images
+			uint32_t count = 0;
+			VK(vkGetSwapchainImagesKHR(device, swapchain, &count, nullptr));
+			swapchain_images.resize(count);
+			VK(vkGetSwapchainImagesKHR(device, swapchain, &count, swapchain_images.data()));
+
+		}
 
 	}
 
@@ -578,13 +740,6 @@ void RTG::recreate_swapchain() {
 
 
 void RTG::destroy_swapchain() {
-	/*refsol::RTG_destroy_swapchain(
-		device,
-		&swapchain,
-		&swapchain_images,
-		&swapchain_image_views,
-		&swapchain_image_dones
-	);*/
 
 	VK(vkDeviceWaitIdle(device));
 
@@ -602,9 +757,24 @@ void RTG::destroy_swapchain() {
 
 	swapchain_images.clear();
 
-	if (swapchain != VK_NULL_HANDLE) {
-		vkDestroySwapchainKHR(device, swapchain, nullptr);
-		swapchain = VK_NULL_HANDLE;
+	if (configuration.headless) {
+		for (auto& h : headless_swapchain) {
+			helpers.destroy_image(std::move(h.image));
+			helpers.destroy_buffer(std::move(h.buffer));
+			h.copy_command = VK_NULL_HANDLE;
+			vkDestroyFence(device, h.image_presented, nullptr);
+			h.image_presented = VK_NULL_HANDLE;
+		}
+		headless_swapchain.clear();
+
+		vkDestroyCommandPool(device, headless_command_pool, nullptr);
+		headless_command_pool = VK_NULL_HANDLE;
+	}
+	else {
+		if (swapchain != VK_NULL_HANDLE) {
+			vkDestroySwapchainKHR(device, swapchain, nullptr);
+			swapchain = VK_NULL_HANDLE;
+		}
 	}
 }
 
@@ -721,21 +891,85 @@ void RTG::run(Application& application) {
 
 	on_swapchain();
 
+	// headless next image
+	uint32_t headless_next_image = 0;
 
 	// time handling
 	std::chrono::high_resolution_clock::time_point before = std::chrono::high_resolution_clock::now();
 
 	// event handling
 	std::vector<InputEvent> event_queue;
-	glfwSetWindowUserPointer(window, &event_queue);
-	glfwSetCursorPosCallback(window, cursor_pos_callback);
-	glfwSetMouseButtonCallback(window, mouse_button_callback);
-	glfwSetScrollCallback(window, scroll_callback);
-	glfwSetKeyCallback(window, key_callback);
 
-	while (!glfwWindowShouldClose(window)) {
+	if (!configuration.headless) {
+		glfwSetWindowUserPointer(window, &event_queue);
+		glfwSetCursorPosCallback(window, cursor_pos_callback);
+		glfwSetMouseButtonCallback(window, mouse_button_callback);
+		glfwSetScrollCallback(window, scroll_callback);
+		glfwSetKeyCallback(window, key_callback);
+	}
+
+
+	while (configuration.headless || !glfwWindowShouldClose(window)) {
+
+		float headless_dt = 0.0f;
+		std::string headless_save = "";
+
 		//event handling:
-		glfwPollEvents();
+		if (configuration.headless) {
+			// read events from stdin
+			std::string line;
+			while (std::getline(std::cin, line)) {
+				try {
+					std::istringstream iss(line);
+					iss.imbue(std::locale::classic());
+
+					std::string type;
+					if (!(iss >> type)) {
+						throw std::runtime_error("failed to read event type");
+					}
+
+					if (type == "AVAILABLE") {
+						//read dt
+						if (!(iss >> headless_dt)) {
+							throw std::runtime_error("failed to read dt.");
+						}
+						if (headless_dt < 0) {
+							throw std::runtime_error("dt less than zero.");
+						}
+
+						//check for save file name
+						if (iss >> headless_save) {
+							if (!headless_save.ends_with(".ppm")) throw std::runtime_error("output filename ("" + headless_save + "") must end with .ppm");
+						}
+
+						//check for trailing junk
+						char junk;
+						if (iss >> junk) throw std::runtime_error("trailing junk in event line");
+
+
+						//stop parsing events so a frame can draw
+						break;
+					}
+					else {
+						throw std::runtime_error("unrecognized type");
+					}
+				}
+				catch (std::exception& e) {
+					std::cerr << "WARNING: failed to parse event (" << e.what() << ") from: "" << line << ""; ignoring it." << std::endl;
+				}
+
+
+
+			}
+
+			if (!std::cin) {
+				break;
+			}
+		}
+		else {
+			glfwPollEvents();
+		}
+
 
 		for (InputEvent const& input : event_queue) {
 			application.on_input(input);
@@ -747,6 +981,9 @@ void RTG::run(Application& application) {
 			float dt = float(std::chrono::duration<double>(after - before).count());
 			before = after;
 			dt = std::min(dt, 0.1f);
+			if (configuration.headless) {
+				dt = headless_dt;
+			}
 			application.update(dt);
 		}
 
@@ -761,23 +998,58 @@ void RTG::run(Application& application) {
 		}
 
 		uint32_t image_index = -1U;
-	retry:
-		if (VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, workspaces[workspace_index].image_available, VK_NULL_HANDLE, &image_index);
-			result == VK_ERROR_OUT_OF_DATE_KHR) {
-			std::cerr << "Recreating swapchain because vkAcquireNextImageKHR returned " << string_VkResult(result) << "." << std::endl;
 
-			recreate_swapchain();
-			on_swapchain();
+		if (configuration.headless) {
+			assert(swapchain == VK_NULL_HANDLE);
+			assert(headless_next_image < static_cast<uint32_t>(headless_swapchain.size()));
+			image_index = headless_next_image;
+			headless_next_image = (headless_next_image + 1) % uint32_t(headless_swapchain.size());
 
-			goto retry;
-		}
-		else if (result == VK_SUBOPTIMAL_KHR) {
-			std::cerr << "Suboptimal swapchain format -- ignoring for the moment." << std::endl;
-		}
-		else if (result != VK_SUCCESS) {
-			throw std::runtime_error("Failed to acquire swapchain image (" + std::string(string_VkResult(result)) + ")!");
-		}
+			//wait for image to be done copying to buffer
+			VK(vkWaitForFences(device, 1, &headless_swapchain[image_index].image_presented, VK_TRUE, UINT64_MAX));
 
+			//TODO: save buffer, if needed
+			if (headless_swapchain[image_index].save_to != "") {
+				headless_swapchain[image_index].save();
+				headless_swapchain[image_index].save_to = "";
+			}
+
+			headless_swapchain[image_index].save_to = headless_save;
+
+			//mark next copy as pending
+			VK(vkResetFences(device, 1, &headless_swapchain[image_index].image_presented));
+
+			//TODO: signal GPU that image is "available for rendering to"
+			VkSubmitInfo submit_info{
+				.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+				.signalSemaphoreCount = 1,
+				.pSignalSemaphores = &workspaces[workspace_index].image_available
+			};
+
+			VK(vkQueueSubmit(graphics_queue, 1, &submit_info, nullptr));
+
+
+		}
+		else {
+
+		retry:
+			if (VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, workspaces[workspace_index].image_available, VK_NULL_HANDLE, &image_index);
+				result == VK_ERROR_OUT_OF_DATE_KHR) {
+				std::cerr << "Recreating swapchain because vkAcquireNextImageKHR returned " << string_VkResult(result) << "." << std::endl;
+
+				recreate_swapchain();
+				on_swapchain();
+
+				goto retry;
+			}
+			else if (result == VK_SUBOPTIMAL_KHR) {
+				std::cerr << "Suboptimal swapchain format -- ignoring for the moment." << std::endl;
+			}
+			else if (result != VK_SUCCESS) {
+				throw std::runtime_error("Failed to acquire swapchain image (" + std::string(string_VkResult(result)) + ")!");
+			}
+
+		}
 		// call render function
 		application.render(*this, RenderParams{
 			.workspace_index = workspace_index,
@@ -787,6 +1059,20 @@ void RTG::run(Application& application) {
 			.workspace_available = workspaces[workspace_index].workspace_available
 			});
 
+		if (configuration.headless) {
+			VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			VkSubmitInfo submit_info{
+				.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+				.waitSemaphoreCount = 1,
+				.pWaitSemaphores = &swapchain_image_dones[image_index],
+				.pWaitDstStageMask = &wait_stage,
+				.commandBufferCount = 1,
+				.pCommandBuffers = &headless_swapchain[image_index].copy_command
+			};
+
+			VK(vkQueueSubmit(graphics_queue, 1, &submit_info, headless_swapchain[image_index].image_presented));
+		}
+		else
 		{
 			// queue the work for presentation
 			VkPresentInfoKHR present_info{
@@ -813,11 +1099,62 @@ void RTG::run(Application& application) {
 
 	}
 
-	//tear down event handling:
-	glfwSetMouseButtonCallback(window, nullptr);
-	glfwSetCursorPosCallback(window, nullptr);
-	glfwSetScrollCallback(window, nullptr);
-	glfwSetKeyCallback(window, nullptr);
+	if (configuration.headless) {
+		for (size_t i = 0; i < headless_swapchain.size(); i++) {
+			uint32_t image_index = headless_next_image;
+			headless_next_image = (headless_next_image + 1) % uint32_t(headless_swapchain.size());
 
-	glfwSetWindowUserPointer(window, nullptr);
+			VK(vkWaitForFences(device, 1, &headless_swapchain[image_index].image_presented, VK_TRUE, UINT64_MAX));
+
+			//save if requested:
+			if (headless_swapchain[image_index].save_to != "") {
+				headless_swapchain[image_index].save();
+				headless_swapchain[image_index].save_to = "";
+			}
+		}
+	}
+
+	//tear down event handling:
+	if (!configuration.headless) {
+		glfwSetMouseButtonCallback(window, nullptr);
+		glfwSetCursorPosCallback(window, nullptr);
+		glfwSetScrollCallback(window, nullptr);
+		glfwSetKeyCallback(window, nullptr);
+
+		glfwSetWindowUserPointer(window, nullptr);
+	}
+
 }
+
+void RTG::HeadlessSwapchainImage::save() const {
+	if (save_to == "") {
+		return;
+	}
+
+	if (image.format == VK_FORMAT_B8G8R8A8_SRGB) {
+		//get a pointer to the image data copied to the buffer:
+		char const* bgra = reinterpret_cast<char const*>(buffer.allocation.data());
+
+		//convert bgra -> rgb data
+		std::vector<char> rgb(image.extent.height * image.extent.width * 3);
+		for (uint32_t y = 0; y < image.extent.height; y++) {
+			for (uint32_t x = 0; x < image.extent.width; x++) {
+				uint32_t texel_index = y * image.extent.width + x;
+				rgb[texel_index * 3 + 0] = bgra[texel_index * 4 + 2];
+				rgb[texel_index * 3 + 1] = bgra[texel_index * 4 + 1];
+				rgb[texel_index * 3 + 2] = bgra[texel_index * 4 + 0];
+			}
+		}
+
+		//write ppm file
+		std::ofstream ppm(save_to, std::ios::binary);
+		ppm << "P6\n";
+		ppm << image.extent.width << " " << image.extent.height << "\n";
+		ppm << "255\n";
+		ppm.write(rgb.data(), rgb.size());
+	}
+	else {
+		std::cerr << "WARNING: saving format " << string_VkFormat(image.format) << " not supported." << std::endl;
+	}
+}
+
