@@ -2,6 +2,7 @@
 
 #include "Helpers.hpp"
 #include "InputEvent.hpp"
+#include "S72.hpp"
 
 #include <vulkan/vulkan_core.h>
 
@@ -77,6 +78,9 @@ struct RTG {
 		//run without a window, read events from stdin
 		bool headless = false;
 
+		//scene file to load
+		std::string scene_file = "";
+
 		//for configuration construction + management:
 		Configuration() = default;
 		void parse(int argc, char **argv); //parse command-line options; throws on error
@@ -115,7 +119,7 @@ struct RTG {
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
 	VkSurfaceFormatKHR surface_format{};
 	VkPresentModeKHR present_mode{};
-	VkImageLayout present_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VkImageLayout present_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
 	//-------------------------------------------------
 	//Stuff used by 'run' to run the main loop (swapchain and workspaces):
@@ -203,5 +207,8 @@ struct RTG {
 		VkSemaphore image_done = VK_NULL_HANDLE; //this should be signal'd when the image is done being written to
 		VkFence workspace_available = VK_NULL_HANDLE; //this should be signal'd when *all* work is done for the frame
 	};
+
+	//the scene
+	S72 scene;
 
 };

@@ -1,5 +1,7 @@
 #include "RTG.hpp"
 
+
+
 #include "VK.hpp"
 
 #include <vulkan/vulkan_core.h>
@@ -18,6 +20,11 @@
 #include <fstream>
 #include <iostream>
 #include <set>
+
+#define __STDC_LIB_EXT1__
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.hpp"
+
 
 void RTG::Configuration::parse(int argc, char** argv) {
 	for (int argi = 1; argi < argc; ++argi) {
@@ -47,9 +54,18 @@ void RTG::Configuration::parse(int argc, char** argv) {
 				};
 			surface_extent.width = conv("width");
 			surface_extent.height = conv("height");
-		}
+		}		
 		else if (arg == "--headless") {
 			headless = true;
+		}
+		else if (arg == "--scene") {
+			if (argi + 1 >= argc) 
+				throw std::runtime_error("--scene requires a parameter (a path to the scene file).");
+			argi += 1;
+			scene_file = argv[argi];
+			if (!scene_file.ends_with(".s72")) {
+				throw std::runtime_error("--scene parameter should be a .s72 file.");
+			}
 		}
 		else {
 			throw std::runtime_error("Unrecognized argument '" + arg + "'.");
@@ -106,6 +122,20 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 	instance_extensions.emplace_back(VK_KHR_SURFACE_EXTENSION_NAME);
 	instance_extensions.emplace_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
 #endif
+
+	if (configuration.scene_file == "") {
+		throw std::runtime_error("No scene file specified. Use --scene <file.s72> to specify a scene file.");
+	}
+
+	{
+		// load the scene
+		try {
+			scene = S72::load(configuration.scene_file);
+		}
+		catch (std::exception const& e) {
+			std::cerr << "Scene loading failed:\n" << e.what() << std::endl;
+		}
+	}
 
 	if (!configuration.headless)
 	{
@@ -284,6 +314,11 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 			VK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, nullptr));
 			formats.resize(count);
 			VK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats.data()));
+			std::cout << "Supported formats:" << std::endl;
+			uint32_t index = 0;
+			for (const auto& format : formats) {
+				std::cout << "[" << index++ << "]\t" << string_VkFormat(format.format) << std::endl;
+			}
 		}
 
 		{
@@ -291,6 +326,11 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 			VK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr));
 			present_modes.resize(count);
 			VK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, present_modes.data()));
+			uint32_t index = 0;
+			std::cout << "Supported present modes:" << std::endl;
+			for (const auto& mode : present_modes) {
+				std::cout << "[" << index++ << "]\t" << string_VkPresentModeKHR(mode) << std::endl;
+			}
 		}
 
 		surface_format = [&]() {
@@ -525,6 +565,7 @@ void RTG::recreate_swapchain() {
 
 		//set extent from configuration
 		swapchain_extent = configuration.surface_extent;
+		swapchain_extent = VkExtent2D{ .width = 3840, .height = 2160  };
 
 		//set number of images to 3
 		uint32_t requested_count = 3;
@@ -645,7 +686,7 @@ void RTG::recreate_swapchain() {
 
 		swapchain_extent = capabilities.currentExtent;
 
-		uint32_t requested_count = capabilities.minImageCount;
+		uint32_t requested_count = capabilities.minImageCount + 1;
 		if (capabilities.maxImageCount != 0) {
 			requested_count = std::min(requested_count, capabilities.maxImageCount);
 		}
@@ -939,7 +980,7 @@ void RTG::run(Application& application) {
 
 						//check for save file name
 						if (iss >> headless_save) {
-							if (!headless_save.ends_with(".ppm")) throw std::runtime_error("output filename ("" + headless_save + "") must end with .ppm");
+							if (!headless_save.ends_with(".png")) throw std::runtime_error("output filename ("" + headless_save + "") must end with .ppm");
 						}
 
 						//check for trailing junk
@@ -1146,12 +1187,19 @@ void RTG::HeadlessSwapchainImage::save() const {
 			}
 		}
 
+		std::vector<unsigned char> image_data(rgb.begin(), rgb.end());
+		if (stbi_write_png(save_to.c_str(), image.extent.width, image.extent.height, 3, image_data.data(), image.extent.width * 3)) {
+			std::cout << "write image data to " << save_to << std::endl;
+		}
+		else {
+			std::cout << "failed to write data to " << save_to << std::endl;
+		}
 		//write ppm file
-		std::ofstream ppm(save_to, std::ios::binary);
+		/*std::ofstream ppm(save_to, std::ios::binary);
 		ppm << "P6\n";
 		ppm << image.extent.width << " " << image.extent.height << "\n";
 		ppm << "255\n";
-		ppm.write(rgb.data(), rgb.size());
+		ppm.write(rgb.data(), rgb.size());*/
 	}
 	else {
 		std::cerr << "WARNING: saving format " << string_VkFormat(image.format) << " not supported." << std::endl;
