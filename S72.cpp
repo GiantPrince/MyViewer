@@ -1018,5 +1018,16 @@ S72 S72::load(std::string const& scene_file) {
 		value.path = scene_folder + value.src;
 	}
 
+	//load data files contents:
+	for (auto& [key, value] : s72.data_files) {
+		std::ifstream binary_data(value.path, std::ios::binary);
+		if (!binary_data) {
+			throw std::runtime_error("Failed to open data file \"" + value.path + "\".");
+		}
+		std::vector<char> content(std::istreambuf_iterator<char>(binary_data), {});
+
+		value.content = std::move(content);		
+	}
+
 	return s72;
 }

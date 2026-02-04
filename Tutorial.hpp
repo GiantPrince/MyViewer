@@ -3,6 +3,7 @@
 #include "RTG.hpp"
 
 #include "PosColVertex.hpp"
+#include "Vertex.hpp"
 #include "PosNorTexVertex.hpp"
 #include "mat4.hpp"
 
@@ -92,7 +93,7 @@ struct Tutorial : RTG::Application {
 
 		VkPipelineLayout layout = VK_NULL_HANDLE;
 
-		using Vertex = PosNorTexVertex;
+		using Vertex = Vertex;
 
 		VkPipeline handle = VK_NULL_HANDLE;
 
@@ -139,6 +140,13 @@ struct Tutorial : RTG::Application {
 		uint32_t first = 0;
 		uint32_t count = 0;
 	};
+
+	Helpers::AllocatedBuffer mesh_vertex_buffer;
+	struct MeshVertices {
+		uint32_t first = 0;
+		uint32_t count = 0;
+	};
+	std::unordered_map<std::string, MeshVertices> mesh_vertices;
 
 	ObjectVertices plane_vertices;
 	ObjectVertices torus_vertices;
@@ -193,12 +201,22 @@ struct Tutorial : RTG::Application {
 	std::vector<LinesPipeline::Vertex> lines_vertices;
 
 	struct ObjectInstance {
-		ObjectVertices vertices;
+		MeshVertices vertices;
 		ObjectsPipeline::Transform transform;
 		uint32_t texture = 0;
 	};
 	std::vector<ObjectInstance> object_instances;
+	
+	
 	ObjectsPipeline::World world;
+
+
+	// loading all mesh indices
+	std::vector<Vertex> load_mesh_vertices();
+
+	// loading all objects
+	void load_objects();
+	void load_objects(const S72::Node* root, const mat4& world_from_local, const mat4& world_from_local_normal);
 
 
 	//--------------------------------------------------------------------

@@ -121,6 +121,9 @@ struct S72 {
 
 		//computed during loading:
 		std::string path; //path to data file, taking into account path to s72 file (relative to current working directory)
+
+		//the data file's binary contents:
+		std::vector<char> content;
 	};
 	//we organize the data files by "src" so that multiple attributes with the same src resolve to the same DataFile:
 	std::unordered_map< std::string, DataFile > data_files;

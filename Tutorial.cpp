@@ -2,13 +2,14 @@
 
 #include "VK.hpp"
 
+
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <cstring>
 #include <iostream>
 
-Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
+Tutorial::Tutorial(RTG& rtg_) : rtg(rtg_) {
 	//refsol::Tutorial_constructor(rtg, &depth_format, &render_pass, &command_pool);
 	depth_format = rtg.helpers.find_image_format(
 		{ VK_FORMAT_D32_SFLOAT, VK_FORMAT_X8_D24_UNORM_PACK32 },
@@ -136,7 +137,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 	}
 
 	workspaces.resize(rtg.workspaces.size());
-	for (Workspace &workspace : workspaces) {
+	for (Workspace& workspace : workspaces) {
 		//refsol::Tutorial_constructor_workspace(rtg, command_pool, &workspace.command_buffer);
 		{	// command buffer
 			VkCommandBufferAllocateInfo alloc_info{
@@ -257,128 +258,28 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 
 	}
 
+	// load meshes:
 	{
-		std::vector<PosNorTexVertex> vertices;
-
-		{// a quadrilateral
-			plane_vertices.first = static_cast<uint32_t>(vertices.size());
-			vertices.emplace_back(PosNorTexVertex{
-			.Position{.x = -1.0f, .y = -1.0f, .z = 0.0f },
-			.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f },
-			.TexCoord{.s = 0.0f, .t = 0.0f },
-				});
-			vertices.emplace_back(PosNorTexVertex{
-				.Position{.x = 1.0f, .y = -1.0f, .z = 0.0f },
-				.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f},
-				.TexCoord{.s = 1.0f, .t = 0.0f },
-				});
-			vertices.emplace_back(PosNorTexVertex{
-				.Position{.x = -1.0f, .y = 1.0f, .z = 0.0f },
-				.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f},
-				.TexCoord{.s = 0.0f, .t = 1.0f },
-				});
-				vertices.emplace_back(PosNorTexVertex{
-					.Position{.x = 1.0f, .y = 1.0f, .z = 0.0f },
-					.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f },
-					.TexCoord{.s = 1.0f, .t = 1.0f },
-					});
-				vertices.emplace_back(PosNorTexVertex{
-					.Position{.x = -1.0f, .y = 1.0f, .z = 0.0f },
-					.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f},
-					.TexCoord{.s = 0.0f, .t = 1.0f },
-					});
-				vertices.emplace_back(PosNorTexVertex{
-					.Position{.x = 1.0f, .y = -1.0f, .z = 0.0f },
-					.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f},
-					.TexCoord{.s = 1.0f, .t = 0.0f },
-					});
-				plane_vertices.count = static_cast<uint32_t>(vertices.size()) - plane_vertices.first;
-
-		}
-
-		{ //A torus:
-			torus_vertices.first = uint32_t(vertices.size());
-
-			//TODO: torus!
-			constexpr float R1 = 0.75f;
-			constexpr float R2 = 0.15f;
-
-			constexpr uint32_t U_STEPS = 20;
-			constexpr uint32_t V_STEPS = 16;
-
-			constexpr float V_REPEATS = 2.0f;
-			constexpr float U_REPEATS = int(V_REPEATS / R2 * R1 + 0.999f);
-
-			auto emplace_vertex = [&](uint32_t ui, uint32_t vi) {
-				float ua = (ui % U_STEPS) / static_cast<float>(U_STEPS) * 2.0f * static_cast<float>(M_PI);
-				float va = (vi % V_STEPS) / static_cast<float>(V_STEPS) * 2.0f * static_cast<float>(M_PI);
-
-				vertices.emplace_back(PosNorTexVertex{
-					.Position{
-						.x = (R1 + R2 * std::cos(va)) * std::cos(ua),
-						.y = (R1 + R2 * std::cos(va)) * std::sin(ua),
-						.z = R2 * std::sin(va),
-					},
-					.Normal{
-						.x = std::cos(va) * std::cos(ua),
-						.y = std::cos(va) * std::sin(ua),
-						.z = std::sin(va),
-					},
-					.TexCoord{
-						.s = ui / float(U_STEPS) * U_REPEATS,
-						.t = vi / float(V_STEPS) * V_REPEATS,
-					},
-					});
-				};
-
-			for (uint32_t ui = 0; ui < U_STEPS; ++ui) {
-				for (uint32_t vi = 0; vi < V_STEPS; ++vi) {
-					emplace_vertex(ui, vi);
-					emplace_vertex(ui + 1, vi);
-					emplace_vertex(ui, vi + 1);
-
-					emplace_vertex(ui, vi + 1);
-					emplace_vertex(ui + 1, vi);
-					emplace_vertex(ui + 1, vi + 1);
-				}
-			}
-
-			torus_vertices.count = uint32_t(vertices.size()) - torus_vertices.first;
-		}
-
-
-		//A single triangle
-		/*vertices.emplace_back(PosNorTexVertex{
-			.Position{.x = 0.0f, .y = 0.0f, .z = 0.0f },
-			.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f  },
-			.TexCoord{.s = 0.0f, .t = 0.0f}
-			});
-		vertices.emplace_back(PosNorTexVertex{
-			.Position{.x = 1.0f, .y = 0.0f, .z = 0.0f },
-			.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f  },
-			.TexCoord{.s = 1.0f, .t = 0.0f}
-			});
-		vertices.emplace_back(PosNorTexVertex{
-			.Position{.x = 0.0f, .y = 1.0f, .z = 0.0f },
-			.Normal{.x = 0.0f, .y = 0.0f, .z = 1.0f  },
-			.TexCoord{.s = 0.0f, .t = 1.0f}
-			});*/
-
-		size_t bytes = vertices.size() * sizeof(vertices[0]);
-
-		object_vertices = rtg.helpers.create_buffer(
+		std::vector<Vertex> vertices = load_mesh_vertices();
+		size_t bytes = vertices.size() * sizeof(Vertex);
+		mesh_vertex_buffer = rtg.helpers.create_buffer(
 			bytes,
 			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			Helpers::Unmapped
 		);
 
-		rtg.helpers.transfer_to_buffer(vertices.data(), bytes, object_vertices);
+		rtg.helpers.transfer_to_buffer(
+			vertices.data(),
+			bytes,
+			mesh_vertex_buffer
+		);
 	}
+
 
 	{
 		textures.reserve(2);
-		{ 
+		{
 			uint32_t size = 128;
 			std::vector< uint32_t > data;
 			data.reserve(size * size);
@@ -406,13 +307,13 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 
 
 			//TODO: transfer data
-			rtg.helpers.transfer_to_image(data.data(), sizeof(data[0])* data.size(), textures.back());
+			rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
 		}
 
 		{ //TODO: texture 1 will be a classic 'xor' texture
 			uint32_t size = 256;
 			std::vector< uint32_t > data;
-			data.reserve(size* size);
+			data.reserve(size * size);
 			for (uint32_t y = 0; y < size; ++y) {
 				for (uint32_t x = 0; x < size; ++x) {
 					uint8_t r = uint8_t(x) ^ uint8_t(y);
@@ -461,7 +362,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 
 			texture_views.emplace_back(image_view);
 
-			
+
 		}
 
 		assert(texture_views.size() == textures.size());
@@ -555,11 +456,11 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 
 	}
 
-	
+
 }
 
 Tutorial::~Tutorial() {
-	
+
 	//just in case rendering is still in flight, don't destroy resources:
 	//(not using VK macro to avoid throw-ing in destructor)
 	if (VkResult result = vkDeviceWaitIdle(rtg.device); result != VK_SUCCESS) {
@@ -588,15 +489,16 @@ Tutorial::~Tutorial() {
 		rtg.helpers.destroy_image(std::move(texture));
 	}
 	textures.clear();
-	
+
 
 	rtg.helpers.destroy_buffer(std::move(object_vertices));
+	rtg.helpers.destroy_buffer(std::move(mesh_vertex_buffer));
 
 	if (swapchain_depth_image.handle != VK_NULL_HANDLE) {
 		destroy_framebuffers();
 	}
 
-	for (Workspace &workspace : workspaces) {
+	for (Workspace& workspace : workspaces) {
 		//refsol::Tutorial_destructor_workspace(rtg, command_pool, &workspace.command_buffer);
 
 		if (workspace.command_buffer != VK_NULL_HANDLE) {
@@ -633,10 +535,12 @@ Tutorial::~Tutorial() {
 		if (workspace.World.handle != VK_NULL_HANDLE) {
 			rtg.helpers.destroy_buffer(std::move(workspace.World));
 		}
+
 		
 
+
 	}
-	
+
 
 	if (descriptor_pool) {
 		vkDestroyDescriptorPool(rtg.device, descriptor_pool, nullptr);
@@ -660,7 +564,7 @@ Tutorial::~Tutorial() {
 	}
 }
 
-void Tutorial::on_swapchain(RTG &rtg_, RTG::SwapchainEvent const &swapchain) {
+void Tutorial::on_swapchain(RTG& rtg_, RTG::SwapchainEvent const& swapchain) {
 	//[re]create framebuffers:
 	//refsol::Tutorial_on_swapchain(rtg, swapchain, depth_format, render_pass, &swapchain_depth_image, &swapchain_depth_image_view, &swapchain_framebuffers);
 	if (swapchain_depth_image.handle != VK_NULL_HANDLE) {
@@ -735,14 +639,14 @@ void Tutorial::destroy_framebuffers() {
 }
 
 
-void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
+void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 	//assert that parameters are valid:
 	assert(&rtg == &rtg_);
 	assert(render_params.workspace_index < workspaces.size());
 	assert(render_params.image_index < swapchain_framebuffers.size());
-	
+
 	//get more convenient names for the current workspace and target framebuffer:
-	Workspace &workspace = workspaces[render_params.workspace_index];
+	Workspace& workspace = workspaces[render_params.workspace_index];
 	VkFramebuffer framebuffer = swapchain_framebuffers[render_params.image_index];
 
 	//record (into `workspace.command_buffer`) commands that run a `render_pass` that just clears `framebuffer`:
@@ -764,8 +668,8 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 		// realloc buffers if needed
 		size_t needed_bytes = lines_vertices.size() * sizeof(lines_vertices[0]);
 		if (workspace.line_vertices_src.handle == VK_NULL_HANDLE || workspace.line_vertices_src.size < needed_bytes) {
-			size_t new_bytes = (needed_bytes + 4096) / 4096 * 4096; 			
-			
+			size_t new_bytes = (needed_bytes + 4096) / 4096 * 4096;
+
 			if (workspace.line_vertices_src.handle != VK_NULL_HANDLE) {
 				rtg.helpers.destroy_buffer(std::move(workspace.line_vertices_src));
 			}
@@ -866,7 +770,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			if (workspace.Transforms.handle != VK_NULL_HANDLE) {
 				rtg.helpers.destroy_buffer(std::move(workspace.Transforms));
 			}
-			
+
 
 			workspace.Transforms_src = rtg.helpers.create_buffer(
 				new_bytes,
@@ -929,8 +833,8 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 		};
 
 		vkCmdCopyBuffer(workspace.command_buffer, workspace.Transforms_src.handle, workspace.Transforms.handle, 1, &copy_region);
-		
-		
+
+
 		{
 			LinesPipeline::Camera camera{
 				.CLIP_FROM_WORLD = CLIP_FROM_WORLD
@@ -969,7 +873,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 	}
 
 
-	
+
 	//render pass
 	{
 		std::array<VkClearValue, 2> clear_values{
@@ -1022,6 +926,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
 		}
 
+		if (!lines_vertices.empty())
 		{
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lines_pipeline.handle);
 			{
@@ -1036,14 +941,14 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 				//bind descriptor set layout
 				std::array<VkDescriptorSet, 1> descriptor_sets{ workspace.Camera_descriptors };
 				vkCmdBindDescriptorSets(
-					workspace.command_buffer, 
+					workspace.command_buffer,
 					VK_PIPELINE_BIND_POINT_GRAPHICS,
-					lines_pipeline.layout, 
-					0, 
-					static_cast<uint32_t>(descriptor_sets.size()), 
+					lines_pipeline.layout,
+					0,
+					static_cast<uint32_t>(descriptor_sets.size()),
 					descriptor_sets.data(),
 					0,
-					nullptr);								
+					nullptr);
 			}
 			vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
 		}
@@ -1057,7 +962,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.handle);
 
 			{
-				std::array<VkBuffer, 1> vertex_buffers{ object_vertices.handle };
+				std::array<VkBuffer, 1> vertex_buffers{ mesh_vertex_buffer.handle };
 				std::array<VkDeviceSize, 1> offsets{ 0 };
 				vkCmdBindVertexBuffers(workspace.command_buffer, 0, static_cast<uint32_t>(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
 
@@ -1175,138 +1080,33 @@ void Tutorial::update(float dt) {
 		assert(0 && "only two camera modes");
 	}
 
-	lines_vertices.clear();	
+	lines_vertices.clear();
 
-{
-	world.SKY_DIRECTION.x = 0.0f;
-	world.SKY_DIRECTION.y = 0.0f;
-	world.SKY_DIRECTION.z = 1.0f;
+	{
+		world.SKY_DIRECTION.x = 0.0f;
+		world.SKY_DIRECTION.y = 0.0f;
+		world.SKY_DIRECTION.z = 1.0f;
 
-	world.SKY_ENERGY.r = 0.1f;
-	world.SKY_ENERGY.g = 0.1f;
-	world.SKY_ENERGY.b = 0.2f;
+		world.SKY_ENERGY.r = 0.1f;
+		world.SKY_ENERGY.g = 0.1f;
+		world.SKY_ENERGY.b = 0.2f;
 
-	world.SUN_DIRECTION.x = std::cos(time);
-	world.SUN_DIRECTION.y = 18.0f / 23.0f;
-	world.SUN_DIRECTION.z = std::sin(time);
+		world.SUN_DIRECTION.x = std::cos(time);
+		world.SUN_DIRECTION.y = 18.0f / 23.0f;
+		world.SUN_DIRECTION.z = std::sin(time);
 
-	world.SUN_ENERGY.r = 1.0f;
-	world.SUN_ENERGY.g = 1.0f;
-	world.SUN_ENERGY.b = 0.9f;
-}
-
-
-	// Lissajous
-	/*float Ax = 0.5f;
-	float Ay = 1.0f;
-	float Az = 0.75f;
-
-	float a = 3.0f;
-	float b = 4.0f;
-	float c = 7.0f;
-
-	float aa = a;
-	float bb = b;
-	float cc = c;
-
-	float phi_x = 0.5f * sin(0.7f * time);
-	float phi_y = 0.5f * sin(1.1f * time + 1.3f);
-	float phi_z = 0.5f * sin(1.7f * time + 2.1f);
-
-
-	float step = 0.01f;
-	for (float t = 0; t < 3 * 5 * 11 * 2 * float(M_PI); t += step) {
-		float x_t = Ax * std::sin(aa * t + phi_x);
-		float x_t_1 = Ax * std::sin(aa * (t + step) + phi_x);
-		float y_t = Ay * std::sin(bb * t + phi_y);
-		float y_t_1 = Ay * std::sin(bb * (t + step) + phi_y);
-		float z_t = Az * std::sin(cc * t + phi_z);
-		float z_t_1 = Az * std::sin(cc * (t + step) + phi_z);
-		lines_vertices.emplace_back(PosColVertex{
-			.Position{.x = x_t, .y = y_t, .z = z_t},
-			.Color{.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xff},
-		});
-		lines_vertices.emplace_back(PosColVertex{
-			.Position{.x = x_t_1, .y = y_t_1, .z = z_t_1},
-			.Color{.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xff},
-			});
-
-	}*/
-	float R = 1.0f;
-	float r = 0.35f;
-	float p = 3.0f;
-	float q = 97.0f;
-
-	float step = 0.01f;
-	for (float t = 0; t < 2 * float(M_PI); t += step) {
-		float x_t = (R + r * std::cos(q * t)) * std::cos(p * t) + 10;
-		float y_t = (R + r * std::cos(q * t)) * std::sin(p * t) + 10;
-		float z_t = r * std::sin(q * t);
-
-		float x_t_1 = (R + r * std::cos(q * (t + step))) * std::cos(p * (t + step)) + 10;
-		float y_t_1 = (R + r * std::cos(q * (t + step))) * std::sin(p * (t + step)) + 10;
-		float z_t_1 = r * std::sin(q * (t + step));
-
-		lines_vertices.emplace_back(PosColVertex{
-			.Position{.x = x_t, .y = y_t, .z = z_t},
-			.Color{.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xff},
-			});
-		lines_vertices.emplace_back(PosColVertex{
-			.Position{.x = x_t_1, .y = y_t_1, .z = z_t_1},
-			.Color{.r = 0x00, .g = 0x00, .b = 0x00, .a = 0xff},
-			});
+		world.SUN_ENERGY.r = 1.0f;
+		world.SUN_ENERGY.g = 1.0f;
+		world.SUN_ENERGY.b = 0.9f;
 	}
 
 	{
-		object_instances.clear();
-
-		{
-			mat4 WORLD_FROM_LOCAL{
-				1.0f, 0.0f, 0.0f, 0.0f,
-				0.0f, 1.0f, 0.0f, 0.0f,
-				0.0f, 0.0f, 1.0f, 0.0f,
-				1.0f, 0.0f, 0.0f, 1.0f,
-			};
-
-			object_instances.emplace_back(ObjectInstance{
-				.vertices = plane_vertices,
-				.transform = {
-					.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
-					.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
-					.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL
-				}
-			});
-
-		}
-
-		{
-			float ang = time / 60.0f * 2.0f * float(M_PI) * 10.0f;
-			float ca = std::cos(ang);
-			float sa = std::sin(ang);
-			mat4 WORLD_FROM_LOCAL{
-				  ca, 0.0f,  -sa, 0.0f,
-				0.0f, 1.0f, 0.0f, 0.0f,
-				  sa, 0.0f,   ca, 0.0f,
-				-1.0f,0.0f, 0.0f, 1.0f,
-			};
-
-			object_instances.emplace_back(ObjectInstance{
-				.vertices = torus_vertices,
-				.transform{
-					.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
-					.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
-					.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,
-				},
-				.texture = 1
-			});
-		}
+		load_objects();
 	}
-
-	
 }
 
 
-void Tutorial::on_input(InputEvent const &evt) {
+void Tutorial::on_input(InputEvent const& evt) {
 	if (action) {
 		action(evt);
 		return;
@@ -1390,11 +1190,135 @@ void Tutorial::on_input(InputEvent const &evt) {
 
 					const float twopi = 2.0f * float(M_PI);
 					free_camera.azimuth -= std::round(free_camera.azimuth / twopi) * twopi;
-					free_camera.elevation -= std::round(free_camera.elevation / twopi) * twopi;					
+					free_camera.elevation -= std::round(free_camera.elevation / twopi) * twopi;
 					return;
 				}
-			};
+				};
 			return;
 		}
+	}
+}
+
+std::vector<Vertex> Tutorial::load_mesh_vertices() {
+	std::vector<Vertex> vertices;
+	for (const auto& [name, mesh] : rtg.scene.meshes) {
+		uint32_t count = mesh.count;
+		uint32_t first = static_cast<uint32_t>(vertices.size());
+
+		vertices.resize(vertices.size() + count);
+
+		uint32_t position_offset = mesh.attributes.at("POSITION").offset;
+		uint32_t normal_offset = mesh.attributes.at("NORMAL").offset;
+		uint32_t tangent_offset = mesh.attributes.at("TANGENT").offset;
+		uint32_t texcoord_offset = mesh.attributes.at("TEXCOORD").offset;
+		uint32_t stride = mesh.attributes.at("POSITION").stride;
+		const std::vector<char>& content = mesh.attributes.at("POSITION").src.content;
+
+		assert(stride == mesh.attributes.at("NORMAL").stride);
+		assert(stride = mesh.attributes.at("TANGENT").stride);
+		assert(stride = mesh.attributes.at("TEXCOORD").stride);
+
+		for (uint32_t i = 0; i < count; i++) {
+			uint32_t strides = i * stride;
+
+			// position
+			vertices[first + i].Position.x = *reinterpret_cast<const float*>(content.data() + position_offset + strides);
+			vertices[first + i].Position.y = *reinterpret_cast<const float*>(content.data() + position_offset + strides + sizeof(float));
+			vertices[first + i].Position.z = *reinterpret_cast<const float*>(content.data() + position_offset + strides + 2 * sizeof(float));
+
+			// normal
+			vertices[first + i].Normal.x = *reinterpret_cast<const float*>(content.data() + normal_offset + strides);
+			vertices[first + i].Normal.y = *reinterpret_cast<const float*>(content.data() + normal_offset + strides + sizeof(float));
+			vertices[first + i].Normal.z = *reinterpret_cast<const float*>(content.data() + normal_offset + strides + 2 * sizeof(float));
+		
+			// tangent
+			vertices[first + i].Tangent.x = *reinterpret_cast<const float*>(content.data() + tangent_offset + strides);
+			vertices[first + i].Tangent.y = *reinterpret_cast<const float*>(content.data() + tangent_offset + strides + sizeof(float));
+			vertices[first + i].Tangent.z = *reinterpret_cast<const float*>(content.data() + tangent_offset + strides + 2 * sizeof(float));
+			vertices[first + i].Tangent.w = *reinterpret_cast<const float*>(content.data() + tangent_offset + strides + 3 * sizeof(float));
+
+			// texcoord
+			vertices[first + i].TexCoord.s = *reinterpret_cast<const float*>(content.data() + texcoord_offset + strides);
+			vertices[first + i].TexCoord.t = *reinterpret_cast<const float*>(content.data() + texcoord_offset + strides + sizeof(float));
+
+		}
+
+		mesh_vertices[name] = MeshVertices{
+			.first = first,
+			.count = count
+		};
+	}
+
+	return vertices;
+}
+
+void Tutorial::load_objects() {
+	object_instances.clear();
+	for (const auto root : rtg.scene.scene.roots) {		
+
+		const mat4 identity = mat4{
+			1.0f, 0.0f, 0.0f, 0.0f,
+			0.0f, 1.0f, 0.0f, 0.0f,
+			0.0f, 0.0f, 1.0f, 0.0f,
+			0.0f, 0.0f, 0.0f, 1.0f
+		};
+
+
+		load_objects(root, identity, identity);
+	}
+}
+
+void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local, const mat4& world_from_local_normal) {
+	// compute parent from local
+
+	float sx = root->scale.x;
+	float sy = root->scale.y;
+	float sz = root->scale.z;
+
+	float rx = root->rotation.x;
+	float ry = root->rotation.y;
+	float rz = root->rotation.z;
+	float rw = root->rotation.w;
+
+	float tx = root->translation.x;
+	float ty = root->translation.y;
+	float tz = root->translation.z;
+
+	const mat4 parent_from_local = mat4{		
+		(1 - 2 * (ry * ry + rz * rz)) * sx,	2 * (rx * ry + rw * rz) * sx,	2 * (rx * rz - rw * ry) * sx,	0.0f,
+		2 * (rx * ry - rw * rz) * sy,	(1 - 2 * (rx * rx + rz * rz)) * sy,	2 * (ry * rz + rw * rx) * sy,	0.0f,
+		2 * (rx * rz + rw * ry) * sz,	2 * (ry * rz - rw * rx) * sz,	(1 - 2 * (rx * rx + ry * ry)) * sz,	0.0f,
+		tx,	ty,	tz,	1.0f
+	};
+
+
+	const mat4 parent_from_local_normal = mat4{
+			(1 - 2 * (ry * ry + rz * rz)) / sx, 2 * (rx * ry + rw * rz) / sx, 2 * (rx * rz - rw * ry) / sx, 0.0f,
+			2 * (rx * ry - rw * rz) / sy, (1 - 2 * (rx * rx + rz * rz)) / sy, 2 * (ry * rz + rw * rx) / sy, 0.0f,
+			2 * (rx * rz + rw * ry) / sz, 2 * (ry * rz - rw * rx) / sz, (1 - 2 * (rx * rx + ry * ry)) / sz, 0.0f,
+			0.0f, 0.0f, 0.0f, 1.0f
+	};
+
+
+	const mat4 WORLD_FROM_LOCAL = world_from_local * parent_from_local;
+	const mat4 WORLD_FROM_LOCAL_NORMAL = world_from_local_normal * parent_from_local_normal;
+	
+	if (root->mesh != nullptr) {
+		// add object instance
+		object_instances.emplace_back(ObjectInstance{
+			.vertices = mesh_vertices.at(root->mesh->name),
+			.transform = {
+				.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+				.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
+				.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL_NORMAL
+			},
+			.texture = 1 // TODO: assign proper texture
+
+			});
+	}
+
+	// recurse to children
+	for (const auto child : root->children) {
+		load_objects(child, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
 	}
 }

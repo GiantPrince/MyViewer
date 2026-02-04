@@ -30,6 +30,7 @@ const main_objs = [
 	maek.CPP('Tutorial.cpp'),
 	maek.CPP('PosColVertex.cpp'),
 	maek.CPP('PosNorTexVertex.cpp'),
+	maek.CPP('Vertex.cpp'),
 	maek.CPP('RTG.cpp'),
 	maek.CPP('sejp.cpp'),
 	maek.CPP('S72.cpp'),
