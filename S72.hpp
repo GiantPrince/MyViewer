@@ -35,7 +35,13 @@ struct S72 {
 	//NOTE: redefine these for your vector and quaternion types of choice:
 	using vec3 = struct vec3_internal { float x, y, z; };
 	using quat = struct quat_internal { float x, y, z, w; };
-	using color = struct color_internal { float r, g, b; };
+	using color = struct color_internal { 
+		float r, g, b; 
+		bool operator==(const color_internal& other) const {
+			return r == other.r && g == other.g && b == other.b;
+		}
+	
+	};
 
 	//-------------------------------------------------
 

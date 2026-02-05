@@ -2,12 +2,15 @@
 
 #include "VK.hpp"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.hpp"
 
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <cstring>
 #include <iostream>
+
 
 Tutorial::Tutorial(RTG& rtg_) : rtg(rtg_) {
 	//refsol::Tutorial_constructor(rtg, &depth_format, &render_pass, &command_pool);
@@ -276,68 +279,8 @@ Tutorial::Tutorial(RTG& rtg_) : rtg(rtg_) {
 		);
 	}
 
-
 	{
-		textures.reserve(2);
-		{
-			uint32_t size = 128;
-			std::vector< uint32_t > data;
-			data.reserve(size * size);
-			for (uint32_t y = 0; y < size; ++y) {
-				float fy = (y + 0.5f) / float(size);
-				for (uint32_t x = 0; x < size; ++x) {
-					float fx = (x + 0.5f) / float(size);
-					//highlight the origin:
-					if (fx < 0.05f && fy < 0.05f) data.emplace_back(0xff0000ff); //red
-					else if ((fx < 0.5f) == (fy < 0.5f)) data.emplace_back(0xff444444); //dark grey
-					else data.emplace_back(0xffbbbbbb); //light grey
-				}
-			}
-			assert(data.size() == size * size);
-
-			//TODO: make a place for the texture to live on the GPU
-			textures.emplace_back(rtg.helpers.create_image(
-				VkExtent2D{ .width = size, .height = size },
-				VK_FORMAT_R8G8B8A8_UNORM,
-				VK_IMAGE_TILING_OPTIMAL,
-				VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-				Helpers::Unmapped
-			));
-
-
-			//TODO: transfer data
-			rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
-		}
-
-		{ //TODO: texture 1 will be a classic 'xor' texture
-			uint32_t size = 256;
-			std::vector< uint32_t > data;
-			data.reserve(size * size);
-			for (uint32_t y = 0; y < size; ++y) {
-				for (uint32_t x = 0; x < size; ++x) {
-					uint8_t r = uint8_t(x) ^ uint8_t(y);
-					uint8_t g = uint8_t(x + 128) ^ uint8_t(y);
-					uint8_t b = uint8_t(x) ^ uint8_t(y + 27);
-					uint8_t a = 0xff;
-					data.emplace_back(uint32_t(r) | (uint32_t(g) << 8) | (uint32_t(b) << 16) | (uint32_t(a) << 24));
-				}
-			}
-			assert(data.size() == size * size);
-
-			//make a place for the texture to live on the GPU:
-			textures.emplace_back(rtg.helpers.create_image(
-				VkExtent2D{ .width = size , .height = size }, //size of image
-				VK_FORMAT_R8G8B8A8_SRGB, //how to interpret image data (in this case, SRGB-encoded 8-bit RGBA)
-				VK_IMAGE_TILING_OPTIMAL,
-				VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
-				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
-				Helpers::Unmapped
-			));
-
-			//transfer data:
-			rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
-		}
+		load_textures();
 	}
 
 	{
@@ -535,12 +478,7 @@ Tutorial::~Tutorial() {
 		if (workspace.World.handle != VK_NULL_HANDLE) {
 			rtg.helpers.destroy_buffer(std::move(workspace.World));
 		}
-
-		
-
-
 	}
-
 
 	if (descriptor_pool) {
 		vkDestroyDescriptorPool(rtg.device, descriptor_pool, nullptr);
@@ -1230,7 +1168,7 @@ std::vector<Vertex> Tutorial::load_mesh_vertices() {
 			vertices[first + i].Normal.x = *reinterpret_cast<const float*>(content.data() + normal_offset + strides);
 			vertices[first + i].Normal.y = *reinterpret_cast<const float*>(content.data() + normal_offset + strides + sizeof(float));
 			vertices[first + i].Normal.z = *reinterpret_cast<const float*>(content.data() + normal_offset + strides + 2 * sizeof(float));
-		
+
 			// tangent
 			vertices[first + i].Tangent.x = *reinterpret_cast<const float*>(content.data() + tangent_offset + strides);
 			vertices[first + i].Tangent.y = *reinterpret_cast<const float*>(content.data() + tangent_offset + strides + sizeof(float));
@@ -1254,7 +1192,7 @@ std::vector<Vertex> Tutorial::load_mesh_vertices() {
 
 void Tutorial::load_objects() {
 	object_instances.clear();
-	for (const auto root : rtg.scene.scene.roots) {		
+	for (const auto root : rtg.scene.scene.roots) {
 
 		const mat4 identity = mat4{
 			1.0f, 0.0f, 0.0f, 0.0f,
@@ -1284,7 +1222,7 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 	float ty = root->translation.y;
 	float tz = root->translation.z;
 
-	const mat4 parent_from_local = mat4{		
+	const mat4 parent_from_local = mat4{
 		(1 - 2 * (ry * ry + rz * rz)) * sx,	2 * (rx * ry + rw * rz) * sx,	2 * (rx * rz - rw * ry) * sx,	0.0f,
 		2 * (rx * ry - rw * rz) * sy,	(1 - 2 * (rx * rx + rz * rz)) * sy,	2 * (ry * rz + rw * rx) * sy,	0.0f,
 		2 * (rx * rz + rw * ry) * sz,	2 * (ry * rz - rw * rx) * sz,	(1 - 2 * (rx * rx + ry * ry)) * sz,	0.0f,
@@ -1302,19 +1240,40 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 
 	const mat4 WORLD_FROM_LOCAL = world_from_local * parent_from_local;
 	const mat4 WORLD_FROM_LOCAL_NORMAL = world_from_local_normal * parent_from_local_normal;
-	
+
 	if (root->mesh != nullptr) {
-		// add object instance
+
+		uint32_t texture_index = 0;
+
+		if (root->mesh->material != nullptr) {
+			// add object instance
+			if (std::holds_alternative<S72::Material::Lambertian>(root->mesh->material->brdf)) {
+				S72::Material::Lambertian lambert = std::get<S72::Material::Lambertian>(root->mesh->material->brdf);
+				if (std::holds_alternative<S72::color>(lambert.albedo)) {
+					S72::color albedo_color = std::get<S72::color>(lambert.albedo);
+					texture_index = texture_color_to_index.at(albedo_color);
+				}
+				else if (std::holds_alternative<S72::Texture *>(lambert.albedo)) {
+					S72::Texture* albedo_texture = std::get<S72::Texture*>(lambert.albedo);
+					std::string texture_key = albedo_texture->src + ", format " + std::to_string(int(albedo_texture->type)) + ", type " + std::to_string(int(albedo_texture->format));
+					texture_index = texture_name_to_index.at(texture_key);
+				}
+			}	
+			else {
+				throw std::runtime_error("Unsupported material type");
+			}
+		}
 		object_instances.emplace_back(ObjectInstance{
-			.vertices = mesh_vertices.at(root->mesh->name),
-			.transform = {
-				.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
-				.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
-				.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL_NORMAL
-			},
-			.texture = 1 // TODO: assign proper texture
+				.vertices = mesh_vertices.at(root->mesh->name),
+				.transform = {
+					.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+					.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
+					.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL_NORMAL
+				},
+				.texture = texture_index
 
 			});
+		
 	}
 
 	// recurse to children
@@ -1322,3 +1281,82 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 		load_objects(child, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
 	}
 }
+
+void Tutorial::load_textures() {
+	textures.reserve(rtg.scene.textures.size());
+
+	S72::color default_material_albedo = { 0.8f, 0.8f, 0.8f };
+	textures.emplace_back(rtg.helpers.create_image(
+		VkExtent2D{ .width = 1, .height = 1 },
+		VK_FORMAT_R32G32B32_SFLOAT,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		Helpers::Unmapped
+	));
+
+	rtg.helpers.transfer_to_image(&default_material_albedo, 12, textures.back());
+
+	for (const auto& [name, texture] : rtg.scene.textures) {
+		int tex_width, tex_height, tex_channels;
+		unsigned char* image = stbi_load(texture.path.c_str(), &tex_width, &tex_height, &tex_channels, 0);
+		if (image == nullptr) {
+			throw std::runtime_error("Failed to load texture image: " + texture.path);
+		}
+
+		assert(tex_channels == 3);
+		VkFormat format = VK_FORMAT_UNDEFINED;
+
+		if (texture.format == S72::Texture::Format::linear) {
+			format = VK_FORMAT_R8G8B8_UNORM;
+		}
+		else if (texture.format == S72::Texture::Format::srgb) {
+			format = VK_FORMAT_R8G8B8_SRGB;
+		}
+		else {
+			throw std::runtime_error("Unsupported texture format");
+		}
+		texture_name_to_index[name] = static_cast<uint32_t>(textures.size());
+
+		textures.emplace_back(rtg.helpers.create_image(
+			VkExtent2D{ .width = static_cast<uint32_t>(tex_width), .height = static_cast<uint32_t>(tex_height) },
+			format,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			Helpers::Unmapped
+		));
+
+		rtg.helpers.transfer_to_image(image, tex_width * tex_height * tex_channels, textures.back());
+		stbi_image_free(image);
+	}
+
+
+	for (const auto& [name, material] : rtg.scene.materials) {
+		if (std::holds_alternative<S72::Material::Lambertian>(material.brdf)) {
+			S72::Material::Lambertian lambert =
+				std::get<S72::Material::Lambertian>(material.brdf);
+			if (std::holds_alternative<S72::color>(lambert.albedo)) {
+				S72::color albedo_color = std::get<S72::color>(lambert.albedo);	
+				if (texture_color_to_index.count(albedo_color) == 0) {
+					textures.emplace_back(rtg.helpers.create_image(
+						VkExtent2D{ .width = 1, .height = 1 },
+						VK_FORMAT_R32G32B32_SFLOAT,
+						VK_IMAGE_TILING_OPTIMAL,
+						VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+						Helpers::Unmapped
+					));
+					rtg.helpers.transfer_to_image(&albedo_color, 12, textures.back());
+					texture_color_to_index[albedo_color] = static_cast<uint32_t>(textures.size() - 1);
+				}
+				
+			}
+			else {
+				throw std::runtime_error("Unsupported material type");
+			}
+		}
+	}
+}
+
+

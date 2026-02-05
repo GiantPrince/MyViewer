@@ -9,6 +9,20 @@
 
 #include <GLFW/glfw3.h>
 
+
+namespace std {
+	template<>
+	struct hash<S72::color> {
+		size_t operator()(const S72::color& color) const noexcept {
+			size_t h1 = std::hash<float>{}(color.r);
+			size_t h2 = std::hash<float>{}(color.g);
+			size_t h3 = std::hash<float>{}(color.b);
+			return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2))
+				^ (h3 + 0x9e3779b97f4a7c15ULL + (h2 << 6) + (h2 >> 2));
+		}
+	};
+}
+
 struct Tutorial : RTG::Application {
 
 	Tutorial(RTG &);
@@ -153,6 +167,10 @@ struct Tutorial : RTG::Application {
 
 	std::vector<Helpers::AllocatedImage> textures;
 	std::vector<VkImageView> texture_views;
+	std::unordered_map<std::string, uint32_t> texture_name_to_index;	
+
+	std::unordered_map<S72::color, uint32_t> texture_color_to_index;
+
 	VkSampler texture_sampler = VK_NULL_HANDLE;
 	VkDescriptorPool texture_descriptor_pool = VK_NULL_HANDLE;
 	std::vector<VkDescriptorSet> texture_descriptors;
@@ -218,6 +236,8 @@ struct Tutorial : RTG::Application {
 	void load_objects();
 	void load_objects(const S72::Node* root, const mat4& world_from_local, const mat4& world_from_local_normal);
 
+	// loading all textures
+	void load_textures();
 
 	//--------------------------------------------------------------------
 	//Rendering function, uses all the resources above to queue work to draw a frame:
