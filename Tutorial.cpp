@@ -1018,25 +1018,7 @@ void Tutorial::update(float dt) {
 		assert(0 && "only two camera modes");
 	}
 
-	lines_vertices.clear();
-
-	{
-		world.SKY_DIRECTION.x = 0.0f;
-		world.SKY_DIRECTION.y = 0.0f;
-		world.SKY_DIRECTION.z = 1.0f;
-
-		world.SKY_ENERGY.r = 0.1f;
-		world.SKY_ENERGY.g = 0.1f;
-		world.SKY_ENERGY.b = 0.2f;
-
-		world.SUN_DIRECTION.x = std::cos(time);
-		world.SUN_DIRECTION.y = 18.0f / 23.0f;
-		world.SUN_DIRECTION.z = std::sin(time);
-
-		world.SUN_ENERGY.r = 1.0f;
-		world.SUN_ENERGY.g = 1.0f;
-		world.SUN_ENERGY.b = 0.9f;
-	}
+	lines_vertices.clear();	
 
 	{
 		load_objects();
@@ -1240,6 +1222,44 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 
 	const mat4 WORLD_FROM_LOCAL = world_from_local * parent_from_local;
 	const mat4 WORLD_FROM_LOCAL_NORMAL = world_from_local_normal * parent_from_local_normal;
+
+	if (root->light != nullptr) {
+		if (std::holds_alternative<S72::Light::Sun>(root->light->source)) {
+			S72::Light::Sun sun = std::get<S72::Light::Sun>(root->light->source);
+			assert(sun.angle == 0 || sun.angle == float(M_PI));
+
+			if (sun.angle == 0) {
+				vec4 dir = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 1.0f, 0.0f };
+				float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+				dir[0] = dir[0] / len;
+				dir[1] = dir[1] / len;
+				dir[2] = dir[2] / len;
+				world.SUN_DIRECTION.x = dir[0];
+				world.SUN_DIRECTION.y = dir[1];
+				world.SUN_DIRECTION.z = dir[2];
+				
+				world.SUN_ENERGY.r = sun.strength * root->light->tint.r;
+				world.SUN_ENERGY.g = sun.strength * root->light->tint.g;
+				world.SUN_ENERGY.b = sun.strength * root->light->tint.b;
+			}
+			else if (std::abs(sun.angle - float(M_PI)) < 1e-4f) {
+				vec4 dir = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 1.0f, 0.0f };
+				float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+				dir[0] = dir[0] / len;
+				dir[1] = dir[1] / len;
+				dir[2] = dir[2] / len;
+				world.SKY_DIRECTION.x = dir[0];
+				world.SKY_DIRECTION.y = dir[1];
+				world.SKY_DIRECTION.z = dir[2];
+				world.SKY_ENERGY.r = sun.strength * root->light->tint.r;
+				world.SKY_ENERGY.g = sun.strength * root->light->tint.g;
+				world.SKY_ENERGY.b = sun.strength * root->light->tint.b;
+			}
+		}
+		else {
+			throw std::runtime_error("Unsupported light type");
+		}
+	}
 
 	if (root->mesh != nullptr) {
 
