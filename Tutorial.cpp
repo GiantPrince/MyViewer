@@ -592,12 +592,46 @@ void Tutorial::destroy_framebuffers() {
 
 bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& box, const mat4& WORLD_FROM_LOCAL)
 {
-	float z_near = free_camera.near;
-	float z_far = free_camera.far;
+	float z_near;
+	float z_far;
 
-	float y_near = std::tan(free_camera.fov / 2.0f) * z_near;
-	float x_near = y_near * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height;
+	float y_near;
+	float x_near;
 
+	if (camera_mode == CameraMode::Scene) {
+		z_near = scene_camera.near;
+		z_far = scene_camera.far;
+		y_near = std::tan(scene_camera.fov / 2.0f) * z_near;
+		x_near = y_near * scene_camera.aspect;
+	}
+	else if (camera_mode == CameraMode::Free) {
+		z_near = free_camera.near;
+		z_far = free_camera.far;
+
+		y_near = std::tan(free_camera.fov / 2.0f) * z_near;
+		x_near = y_near * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height;
+	}
+	else if (camera_mode == CameraMode::Debug) {
+		if (previous_camera_mode == CameraMode::Scene) {
+			z_near = scene_camera.near;
+			z_far = scene_camera.far;
+			y_near = std::tan(scene_camera.fov / 2.0f) * z_near;
+			x_near = y_near * scene_camera.aspect;
+		}
+		else if (previous_camera_mode == CameraMode::Free) {
+			z_near = free_camera.near;
+			z_far = free_camera.far;
+			y_near = std::tan(free_camera.fov / 2.0f) * z_near;
+			x_near = y_near * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height;
+		}
+		else {
+			assert(false && "invalid previous camera mode");
+		}
+	}
+	else {
+		assert(false && "invalid camera mode");		
+	}
+	
 	vec4 corners[4] = {
 		vec4{ box.min_x, box.min_y, box.min_z, 1.0f },
 		vec4{ box.max_x, box.min_y, box.min_z, 1.0f },
@@ -605,8 +639,20 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 		vec4{ box.min_x, box.min_y, box.max_z, 1.0f }
 	};
 
+	mat4 view_from_world;
+	if (previous_camera_mode == CameraMode::Scene) {
+		view_from_world = look_at(
+			scene_camera.eye_x, scene_camera.eye_y, scene_camera.eye_z,
+			scene_camera.eye_x + scene_camera.forward_x, scene_camera.eye_y + scene_camera.forward_y, scene_camera.eye_z + scene_camera.forward_z,
+			scene_camera.up_x, scene_camera.up_y, scene_camera.up_z
+		);
+	}
+	else if (previous_camera_mode == CameraMode::Free) {
+		view_from_world = orbit(free_camera.target_x, free_camera.target_y, free_camera.target_z, free_camera.azimuth, free_camera.elevation, free_camera.radius);
+	}
+
 	for (int i = 0; i < 4; i++) {
-		corners[i] = orbit(free_camera.target_x, free_camera.target_y, free_camera.target_z, free_camera.azimuth, free_camera.elevation, free_camera.radius) * WORLD_FROM_LOCAL * corners[i];
+		corners[i] = view_from_world * WORLD_FROM_LOCAL * corners[i];
 	}
 
 	vec4 axes1 = corners[1] - corners[0];
@@ -703,72 +749,117 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 
 void Tutorial::draw_frustum()
 {
-	float ca = std::cos(free_camera.azimuth);
-	float sa = std::sin(free_camera.azimuth);
-	float ce = std::cos(free_camera.elevation);
-	float se = std::sin(free_camera.elevation);
+	float right_x, right_y, right_z;
+	float up_x, up_y, up_z;
+	float out_x, out_y, out_z;
+	float cam_x, cam_y, cam_z;
 
-	//compute right direction
-	float right_x = -sa;
-	float right_y = ca;
-	float right_z = 0.0f;
+	float near_y, near_x, far_y, far_x;
+	float near_z, far_z;
+	
+	if (previous_camera_mode == CameraMode::Free) {
+		float ca = std::cos(free_camera.azimuth);
+		float sa = std::sin(free_camera.azimuth);
+		float ce = std::cos(free_camera.elevation);
+		float se = std::sin(free_camera.elevation);
 
-	//compute up direction
-	float up_x = -se * ca;
-	float up_y = -se * sa;
-	float up_z = ce;
+		//compute right direction
+		right_x = -sa;
+		right_y = ca;
+		right_z = 0.0f;
 
-	//compute out direction
-	float out_x = ce * ca;
-	float out_y = ce * sa;
-	float out_z = se;
+		//compute up direction
+		up_x = -se * ca;
+		up_y = -se * sa;
+		up_z = ce;
 
-	float cam_x = free_camera.target_x + free_camera.radius * out_x;
-	float cam_y = free_camera.target_y + free_camera.radius * out_y;
-	float cam_z = free_camera.target_z + free_camera.radius * out_z;
+		//compute out direction
+		out_x = ce * ca;
+		out_y = ce * sa;
+		out_z = se;
 
-	float near_y = std::tan(free_camera.fov / 2.0f) * free_camera.near - 0.01f;
-	float near_x = near_y * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height - 0.01f;
+		cam_x = free_camera.target_x + free_camera.radius * out_x;
+		cam_y = free_camera.target_y + free_camera.radius * out_y;
+		cam_z = free_camera.target_z + free_camera.radius * out_z;
 
-	float far_y = std::tan(free_camera.fov / 2.0f) * free_camera.far - 0.01f;
-	float far_x = far_y * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height -0.01f;
+		near_y = std::tan(free_camera.fov / 2.0f) * free_camera.near - 0.01f;
+		near_x = near_y * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height - 0.01f;
 
-	free_camera.near += 0.01f;
-	free_camera.far -= 0.01f;	
-	float near_top_left_x = cam_x + (-out_x * free_camera.near) + (up_x * near_y) - (right_x * near_x);
-	float near_top_left_y = cam_y + (-out_y * free_camera.near) + (up_y * near_y) - (right_y * near_x);
-	float near_top_left_z = cam_z + (-out_z * free_camera.near) + (up_z * near_y) - (right_z * near_x);
+		far_y = std::tan(free_camera.fov / 2.0f) * free_camera.far - 0.01f;
+		far_x = far_y * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height - 0.01f;
 
-	float near_top_right_x = cam_x + (-out_x * free_camera.near) + (up_x * near_y) + (right_x * near_x);
-	float near_top_right_y = cam_y + (-out_y * free_camera.near) + (up_y * near_y) + (right_y * near_x);
-	float near_top_right_z = cam_z + (-out_z * free_camera.near) + (up_z * near_y) + (right_z * near_x);
+		near_z = free_camera.near;
+		far_z = free_camera.far;
+	}
+	else if (camera_mode == CameraMode::Scene) {
+		right_x = scene_camera.forward_y * scene_camera.up_z - scene_camera.forward_y * scene_camera.up_z;
+		right_y = scene_camera.forward_z * scene_camera.up_x - scene_camera.forward_x * scene_camera.up_z;
+		right_z = scene_camera.forward_x * scene_camera.up_y - scene_camera.forward_y * scene_camera.up_x;
 
-	float near_bottom_left_x = cam_x + (-out_x * free_camera.near) + (-up_x * near_y) - (right_x * near_x);
-	float near_bottom_left_y = cam_y + (-out_y * free_camera.near) + (-up_y * near_y) - (right_y * near_x);
-	float near_bottom_left_z = cam_z + (-out_z * free_camera.near) + (-up_z * near_y) - (right_z * near_x);
+		float len_right = std::sqrt(right_x * right_x + right_y * right_y + right_z * right_z);
+		right_x /= len_right;
+		right_y /= len_right;
+		right_z /= len_right;
 
-	float near_bottom_right_x = cam_x + (-out_x * free_camera.near) + (-up_x * near_y) + (right_x * near_x);
-	float near_bottom_right_y = cam_y + (-out_y * free_camera.near) + (-up_y * near_y) + (right_y * near_x);
-	float near_bottom_right_z = cam_z + (-out_z * free_camera.near) + (-up_z * near_y) + (right_z * near_x);
+		up_x = scene_camera.up_x;
+		up_y = scene_camera.up_y;
+		up_z = scene_camera.up_z;
 
-	float far_top_left_x = cam_x + (-out_x * free_camera.far) + (up_x * far_y) - (right_x * far_x);
-	float far_top_left_y = cam_y + (-out_y * free_camera.far) + (up_y * far_y) - (right_y * far_x);
-	float far_top_left_z = cam_z + (-out_z * free_camera.far) + (up_z * far_y) - (right_z * far_x);
+		out_x = -scene_camera.forward_x;
+		out_y = -scene_camera.forward_y;
+		out_z = -scene_camera.forward_z;
 
-	float far_top_right_x = cam_x + (-out_x * free_camera.far) + (up_x * far_y) + (right_x * far_x);
-	float far_top_right_y = cam_y + (-out_y * free_camera.far) + (up_y * far_y) + (right_y * far_x);
-	float far_top_right_z = cam_z + (-out_z * free_camera.far) + (up_z * far_y) + (right_z * far_x);
+		cam_x = scene_camera.eye_x;
+		cam_y = scene_camera.eye_y;
+		cam_z = scene_camera.eye_z;
 
-	float far_bottom_left_x = cam_x + (-out_x * free_camera.far) + (-up_x * far_y) - (right_x * far_x);
-	float far_bottom_left_y = cam_y + (-out_y * free_camera.far) + (-up_y * far_y) - (right_y * far_x);
-	float far_bottom_left_z = cam_z + (-out_z * free_camera.far) + (-up_z * far_y) - (right_z * far_x);
+		near_y = std::tan(scene_camera.fov / 2.0f) * scene_camera.near;
+		near_x = near_y * scene_camera.aspect;
 
-	float far_bottom_right_x = cam_x + (-out_x * free_camera.far) + (-up_x * far_y) + (right_x * far_x);
-	float far_bottom_right_y = cam_y + (-out_y * free_camera.far) + (-up_y * far_y) + (right_y * far_x);
-	float far_bottom_right_z = cam_z + (-out_z * free_camera.far) + (-up_z * far_y) + (right_z * far_x);
+		far_y = std::tan(scene_camera.fov / 2.0f) * scene_camera.far;
+		far_x = far_y * scene_camera.aspect;
 
-	free_camera.near -= 0.01f;
-	free_camera.far += 0.01f;
+		near_z = scene_camera.near;
+		far_z = scene_camera.far;
+	}
+	else {
+		assert(false && "unhandled camera mode");
+		return;
+	}
+
+
+	
+	float near_top_left_x = cam_x + (-out_x * near_z) + (up_x * near_y) - (right_x * near_x);
+	float near_top_left_y = cam_y + (-out_y * near_z) + (up_y * near_y) - (right_y * near_x);
+	float near_top_left_z = cam_z + (-out_z * near_z) + (up_z * near_y) - (right_z * near_x);
+
+	float near_top_right_x = cam_x + (-out_x * near_z) + (up_x * near_y) + (right_x * near_x);
+	float near_top_right_y = cam_y + (-out_y * near_z) + (up_y * near_y) + (right_y * near_x);
+	float near_top_right_z = cam_z + (-out_z * near_z) + (up_z * near_y) + (right_z * near_x);
+
+	float near_bottom_left_x = cam_x + (-out_x * near_z) + (-up_x * near_y) - (right_x * near_x);
+	float near_bottom_left_y = cam_y + (-out_y * near_z) + (-up_y * near_y) - (right_y * near_x);
+	float near_bottom_left_z = cam_z + (-out_z * near_z) + (-up_z * near_y) - (right_z * near_x);
+
+	float near_bottom_right_x = cam_x + (-out_x * near_z) + (-up_x * near_y) + (right_x * near_x);
+	float near_bottom_right_y = cam_y + (-out_y * near_z) + (-up_y * near_y) + (right_y * near_x);
+	float near_bottom_right_z = cam_z + (-out_z * near_z) + (-up_z * near_y) + (right_z * near_x);
+
+	float far_top_left_x = cam_x + (-out_x * far_z) + (up_x * far_y) - (right_x * far_x);
+	float far_top_left_y = cam_y + (-out_y * far_z) + (up_y * far_y) - (right_y * far_x);
+	float far_top_left_z = cam_z + (-out_z * far_z) + (up_z * far_y) - (right_z * far_x);
+
+	float far_top_right_x = cam_x + (-out_x * far_z) + (up_x * far_y) + (right_x * far_x);
+	float far_top_right_y = cam_y + (-out_y * far_z) + (up_y * far_y) + (right_y * far_x);
+	float far_top_right_z = cam_z + (-out_z * far_z) + (up_z * far_y) + (right_z * far_x);
+
+	float far_bottom_left_x = cam_x + (-out_x * far_z) + (-up_x * far_y) - (right_x * far_x);
+	float far_bottom_left_y = cam_y + (-out_y * far_z) + (-up_y * far_y) - (right_y * far_x);
+	float far_bottom_left_z = cam_z + (-out_z * far_z) + (-up_z * far_y) - (right_z * far_x);
+
+	float far_bottom_right_x = cam_x + (-out_x * far_z) + (-up_x * far_y) + (right_x * far_x);
+	float far_bottom_right_y = cam_y + (-out_y * far_z) + (-up_y * far_y) + (right_y * far_x);
+	float far_bottom_right_z = cam_z + (-out_z * far_z) + (-up_z * far_y) + (right_z * far_x);
 
 	lines_vertices.emplace_back(PosColVertex{
 		.Position = {.x = near_top_left_x, .y = near_top_left_y, .z = near_top_left_z },
@@ -873,23 +964,7 @@ void Tutorial::draw_frustum()
 	lines_vertices.emplace_back(PosColVertex{
 		.Position = {.x = far_top_left_x, .y = far_top_left_y, .z = far_top_left_z },
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
-		});
-	lines_vertices.emplace_back(PosColVertex{
-		.Position = {.x = cam_x, .y = cam_y, .z = cam_z },
-		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
-		});
-	lines_vertices.emplace_back(PosColVertex{
-		.Position = {.x = free_camera.target_x + right_x + up_x, .y = free_camera.target_y + right_y + up_y, .z = free_camera.target_z + right_z + up_z},
-		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
-		});
-	lines_vertices.emplace_back(PosColVertex{
-		.Position = {.x = cam_x, .y = cam_y, .z = cam_z },
-		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
-		});
-	lines_vertices.emplace_back(PosColVertex{
-		.Position = {.x = cam_x - out_x * 2 - right_x - up_x, .y = cam_y - out_y * 2 - right_y - up_y, .z = cam_z - out_z * 2 - right_z - up_z },
-		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
-		});
+		});	
 
 }
 
@@ -1365,20 +1440,23 @@ void Tutorial::update(float dt) {
 		);
 	}
 	else if (camera_mode == CameraMode::Debug) {
-		
+		CLIP_FROM_WORLD = perspective(
+			debug_camera.fov,
+			rtg.swapchain_extent.width / float(rtg.swapchain_extent.height),
+			debug_camera.near,
+			debug_camera.far
+		) * orbit(
+			debug_camera.target_x, debug_camera.target_y, debug_camera.target_z,
+			debug_camera.azimuth, debug_camera.elevation, debug_camera.radius
+		);
+		if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM)
+		{
+			draw_frustum();
+		}
 	}
 	else {
 		assert(false && "invalid camera mode");
-	}
-
-	if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM)
-	{
-		draw_frustum();
-	}
-	
-
-	
-
+	}			
 }
 
 
@@ -1395,85 +1473,90 @@ void Tutorial::on_input(InputEvent const& evt) {
 		return;
 	}
 
-	// free camera control
-	if (camera_mode == CameraMode::Free) {
-		if (evt.type == InputEvent::MouseWheel) {
-			free_camera.radius *= std::exp(std::log(1.1f) * -evt.wheel.y);
-			free_camera.radius = std::min(free_camera.radius, 2.0f * free_camera.far);
-			free_camera.radius = std::max(free_camera.radius, 0.5f * free_camera.near);
-			return;
-		}
-
-		if (evt.type == InputEvent::MouseButtonDown && evt.button.button == GLFW_MOUSE_BUTTON_LEFT && (evt.button.mods & GLFW_MOD_SHIFT)) {
-			//start panning
-			float init_x = evt.button.x;
-			float init_y = evt.button.y;
-			OrbitCamera init_camera = free_camera;
-
-			action = [this, init_x, init_y, init_camera](InputEvent const& evt) {
-				if (evt.type == InputEvent::MouseButtonUp && evt.button.button == GLFW_MOUSE_BUTTON_LEFT) {
-					//cancel upon button lifted:
-					action = nullptr;
-					return;
-				}
-				if (evt.type == InputEvent::MouseMotion) {
-					// Image height at the plane of the target point
-					float height = 2.0f * std::tan(free_camera.fov * 0.5f) * free_camera.radius;
-
-					// motion at target point
-					float dx = (evt.motion.x - init_x) / rtg.swapchain_extent.height * height;
-					float dy = (evt.motion.y - init_y) / rtg.swapchain_extent.height * height;
-
-					//compute camera transform to extract right (first row) and up (second row):
-					mat4 camera_from_world = orbit(
-						init_camera.target_x, init_camera.target_y, init_camera.target_z,
-						init_camera.azimuth, init_camera.elevation, init_camera.radius
-					);
-
-					//move the desired distance:
-					free_camera.target_x = init_camera.target_x - dx * camera_from_world[0] - dy * camera_from_world[1];
-					free_camera.target_y = init_camera.target_y - dx * camera_from_world[4] - dy * camera_from_world[5];
-					free_camera.target_z = init_camera.target_z - dx * camera_from_world[8] - dy * camera_from_world[9];
-
-					return;
-				}
-				};
-
-			return;
-		}
-
-		if (evt.type == InputEvent::MouseButtonDown && evt.button.button == GLFW_MOUSE_BUTTON_LEFT) {
-			//start tumbling
-			// std::cout << "Start tumbling" << std::endl;
-			float init_x = evt.button.x;
-			float init_y = evt.button.y;
-			OrbitCamera init_camera = free_camera;
-
-			action = [this, init_x, init_y, init_camera](InputEvent const& evt) {
-				if (evt.type == InputEvent::MouseButtonUp && evt.button.button == GLFW_MOUSE_BUTTON_LEFT) {
-					action = nullptr;
-					//std::cout << "Tumbling ended." << std::endl;
-					return;
-				}
-				if (evt.type == InputEvent::MouseMotion) {
-					float dx = (evt.motion.x - init_x) / rtg.swapchain_extent.width;
-					float dy = -(evt.motion.y - init_y) / rtg.swapchain_extent.height;
-
-					float speed = float(M_PI);
-					float flip_x = (std::abs(init_camera.elevation) > 0.5f * float(M_PI) ? -1.0f : 1.0f);
-
-					free_camera.azimuth = init_camera.azimuth - dx * speed * flip_x;
-					free_camera.elevation = init_camera.elevation - dy * speed;
-
-					const float twopi = 2.0f * float(M_PI);
-					free_camera.azimuth -= std::round(free_camera.azimuth / twopi) * twopi;
-					free_camera.elevation -= std::round(free_camera.elevation / twopi) * twopi;
-					return;
-				}
-				};
-			return;
-		}
+	if (camera_mode == CameraMode::Scene) {
+		return;
 	}
+
+	// free camera control
+	OrbitCamera &camera = (camera_mode == CameraMode::Free ? free_camera : debug_camera);
+	
+	if (evt.type == InputEvent::MouseWheel) {
+		camera.radius *= std::exp(std::log(1.1f) * -evt.wheel.y);
+		camera.radius = std::min(camera.radius, 2.0f * camera.far);
+		camera.radius = std::max(camera.radius, 0.5f * camera.near);
+		return;
+	}
+
+	if (evt.type == InputEvent::MouseButtonDown && evt.button.button == GLFW_MOUSE_BUTTON_LEFT && (evt.button.mods & GLFW_MOD_SHIFT)) {
+		//start panning
+		float init_x = evt.button.x;
+		float init_y = evt.button.y;
+		OrbitCamera init_camera = camera;
+
+		action = [this, &camera, init_x, init_y, init_camera](InputEvent const& evt) {
+			if (evt.type == InputEvent::MouseButtonUp && evt.button.button == GLFW_MOUSE_BUTTON_LEFT) {
+				//cancel upon button lifted:
+				action = nullptr;
+				return;
+			}
+			if (evt.type == InputEvent::MouseMotion) {
+				// Image height at the plane of the target point
+				float height = 2.0f * std::tan(camera.fov * 0.5f) * camera.radius;
+
+				// motion at target point
+				float dx = (evt.motion.x - init_x) / rtg.swapchain_extent.height * height;
+				float dy = (evt.motion.y - init_y) / rtg.swapchain_extent.height * height;
+
+				//compute camera transform to extract right (first row) and up (second row):
+				mat4 camera_from_world = orbit(
+					init_camera.target_x, init_camera.target_y, init_camera.target_z,
+					init_camera.azimuth, init_camera.elevation, init_camera.radius
+				);
+
+				//move the desired distance:
+				camera.target_x = init_camera.target_x - dx * camera_from_world[0] - dy * camera_from_world[1];
+				camera.target_y = init_camera.target_y - dx * camera_from_world[4] - dy * camera_from_world[5];
+				camera.target_z = init_camera.target_z - dx * camera_from_world[8] - dy * camera_from_world[9];
+
+				return;
+			}
+			};
+
+		return;
+	}
+
+	if (evt.type == InputEvent::MouseButtonDown && evt.button.button == GLFW_MOUSE_BUTTON_LEFT) {
+		//start tumbling
+		// std::cout << "Start tumbling" << std::endl;
+		float init_x = evt.button.x;
+		float init_y = evt.button.y;
+		OrbitCamera init_camera = camera;
+
+		action = [this, &camera, init_x, init_y, init_camera](InputEvent const& evt) {
+			if (evt.type == InputEvent::MouseButtonUp && evt.button.button == GLFW_MOUSE_BUTTON_LEFT) {
+				action = nullptr;
+				//std::cout << "Tumbling ended." << std::endl;
+				return;
+			}
+			if (evt.type == InputEvent::MouseMotion) {
+				float dx = (evt.motion.x - init_x) / rtg.swapchain_extent.width;
+				float dy = -(evt.motion.y - init_y) / rtg.swapchain_extent.height;
+
+				float speed = float(M_PI);
+				float flip_x = (std::abs(init_camera.elevation) > 0.5f * float(M_PI) ? -1.0f : 1.0f);
+
+				camera.azimuth = init_camera.azimuth - dx * speed * flip_x;
+				camera.elevation = init_camera.elevation - dy * speed;
+
+				const float twopi = 2.0f * float(M_PI);
+				camera.azimuth -= std::round(camera.azimuth / twopi) * twopi;
+				camera.elevation -= std::round(camera.elevation / twopi) * twopi;
+				return;
+			}
+			};
+		return;
+	}
+	
 }
 
 std::vector<Vertex> Tutorial::load_mesh_vertices() {
@@ -1681,7 +1764,7 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 			
 		}
 
-		if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
+		if (camera_mode == CameraMode::Debug && rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
 			
 			const auto& bounding_box = mesh_bounding_boxes[root->mesh->name];
 			vec4 corners[] = {

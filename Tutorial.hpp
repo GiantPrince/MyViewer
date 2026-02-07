@@ -227,6 +227,17 @@ struct Tutorial : RTG::Application {
 		float aspect = 1.0f;
 	} scene_camera;
 
+	//used when camera_mode == CameraMode::Debug:
+	OrbitCamera debug_camera{
+		.target_x = 0, .target_y = 0, .target_z = 0,
+		.radius = 2.0f,
+		.azimuth = 0.0f,
+		.elevation = 0.25f * float(M_PI),
+		.fov = 60.0f * float(M_PI) / 180.0f,
+		.near = 0.1f,
+		.far = 1000.0f
+	};
+
 	//computed from the current camera (as set by camera_mode) during update():
 	mat4 CLIP_FROM_WORLD;
 
