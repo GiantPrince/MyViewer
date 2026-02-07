@@ -1075,7 +1075,8 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 		{
 			assert(workspace.Transforms_src.allocation.mapped);
 			ObjectsPipeline::Transform* out = reinterpret_cast<ObjectsPipeline::Transform*>(workspace.Transforms_src.allocation.data());
-			for (ObjectInstance const& inst : object_instances) {
+			for (ObjectInstance & inst : object_instances) {
+				inst.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * inst.transform.WORLD_FROM_LOCAL;
 				*out = inst.transform;
 				++out;
 			}
@@ -1162,11 +1163,11 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 				float image_aspect = rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height;
 				
-				if (image_aspect > free_camera.aspect) {
-					x_scale = free_camera.aspect / image_aspect;
+				if (image_aspect > scene_camera.aspect) {
+					x_scale = scene_camera.aspect / image_aspect;
 				}
 				else {
-					y_scale = image_aspect / free_camera.aspect;
+					y_scale = image_aspect / scene_camera.aspect;
 				}
 
 				VkViewport viewport{
@@ -1342,14 +1343,14 @@ void Tutorial::update(float dt) {
 	if (camera_mode == CameraMode::Scene)
 	{		
 		CLIP_FROM_WORLD = perspective(
-			free_camera.fov,
-			free_camera.aspect,
-			free_camera.near,
-			free_camera.far
+			scene_camera.fov,
+			scene_camera.aspect,
+			scene_camera.near,
+			scene_camera.far
 		) * look_at(
-			free_camera.eye_x, free_camera.eye_y, free_camera.eye_z,
-			free_camera.target_x, free_camera.target_y, free_camera.target_z,
-			free_camera.up_x, free_camera.up_y, free_camera.up_z
+			scene_camera.eye_x, scene_camera.eye_y, scene_camera.eye_z,
+			scene_camera.eye_x + scene_camera.forward_x, scene_camera.eye_y + scene_camera.forward_y, scene_camera.eye_z + scene_camera.forward_z,
+			scene_camera.up_x, scene_camera.up_y, scene_camera.up_z
 		);
 	}
 	else if (camera_mode == CameraMode::Free) {
@@ -1363,8 +1364,11 @@ void Tutorial::update(float dt) {
 			free_camera.azimuth, free_camera.elevation, free_camera.radius
 		);
 	}
+	else if (camera_mode == CameraMode::Debug) {
+		
+	}
 	else {
-		assert(0 && "only two camera modes");
+		assert(false && "invalid camera mode");
 	}
 
 	if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM)
@@ -1386,6 +1390,7 @@ void Tutorial::on_input(InputEvent const& evt) {
 
 	// general
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_TAB) {
+		previous_camera_mode = camera_mode;
 		camera_mode = CameraMode((int(camera_mode) + 1) % 3);
 		return;
 	}
@@ -1579,25 +1584,25 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 		assert(root->camera->name == rtg.configuration.camera_name);
 		if (std::holds_alternative<S72::Camera::Perspective>(root->camera->projection)) {
 			S72::Camera::Perspective perspective = std::get<S72::Camera::Perspective>(root->camera->projection);
-			free_camera.fov = perspective.vfov;
-			free_camera.near = perspective.near;
-			free_camera.far = perspective.far;
-			free_camera.aspect = perspective.aspect;
+			scene_camera.fov = perspective.vfov;
+			scene_camera.near = perspective.near;
+			scene_camera.far = perspective.far;
+			scene_camera.aspect = perspective.aspect;
 		}
 		vec4 cam_pos = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 0.0f, 1.0f };
-		free_camera.eye_x = cam_pos[0];
-		free_camera.eye_y = cam_pos[1];
-		free_camera.eye_z = cam_pos[2];
+		scene_camera.eye_x = cam_pos[0];
+		scene_camera.eye_y = cam_pos[1];
+		scene_camera.eye_z = cam_pos[2];
 
 		vec4 forward = WORLD_FROM_LOCAL_NORMAL * vec4{ 0.0f, 0.0f, -1.0f, 0.0f };
-		free_camera.target_x = free_camera.eye_x + forward[0];
-		free_camera.target_y = free_camera.eye_y + forward[1];
-		free_camera.target_z = free_camera.eye_z + forward[2];
+		scene_camera.forward_x = forward[0];
+		scene_camera.forward_y = forward[1];
+		scene_camera.forward_z = forward[2];
 
 		vec4 up = WORLD_FROM_LOCAL_NORMAL * vec4{ 0.0f, 1.0f, 0.0f, 0.0f };
-		free_camera.up_x = up[0];
-		free_camera.up_y = up[1];
-		free_camera.up_z = up[2];
+		scene_camera.up_x = up[0];
+		scene_camera.up_y = up[1];
+		scene_camera.up_z = up[2];
 	}
 
 	if (root->light != nullptr) {
@@ -1665,7 +1670,7 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 			object_instances.emplace_back(ObjectInstance{
 					.vertices = mesh_vertices.at(root->mesh->name),
 					.transform = {
-						.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+						//.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
 						.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
 						.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL_NORMAL
 					},

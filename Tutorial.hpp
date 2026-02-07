@@ -213,11 +213,19 @@ struct Tutorial : RTG::Application {
 		float elevation = 0.25 * float(M_PI);
 		float fov = 60.0f * float(M_PI) / 180.0f;
 		float near = 0.1f;
-		float far = 10.0f;
-		float aspect = 1.0f;
+		float far = 10.0f;	
+	} free_camera;
+
+	//used when camera_mode == CameraMode::Scene:
+	struct SceneCamera {
 		float eye_x = 0, eye_y = 0, eye_z = 0;
 		float up_x = 0, up_y = 0, up_z = 0;
-	} free_camera;
+		float forward_x = 0, forward_y = 0, forward_z = 0;
+		float fov = 60.0f * float(M_PI) / 180.0f;
+		float near = 0.1f;
+		float far = 10.0f;
+		float aspect = 1.0f;
+	} scene_camera;
 
 	//computed from the current camera (as set by camera_mode) during update():
 	mat4 CLIP_FROM_WORLD;
