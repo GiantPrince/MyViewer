@@ -619,13 +619,13 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 	z_extent /= 2.0f;
 
 	{
-		float M_x = 0;
+		/*float M_x = 0;
 		float M_y = 0;
-		float M_z = 1.0f;
+		float M_z = 1.0f;*/
 
-		float MoX = 0.0f;
-		float MoY = 0.0f;
-		float MoZ = 1.0f;
+		//float MoX = 0.0f;
+		//float MoY = 0.0f;
+		//float MoZ = 1.0f;
 
 		float MoC = center[2];
 
@@ -681,10 +681,7 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 				tau_1 *= z_far / z_near;
 			}
 
-			if (obb_max < -tau_1 || obb_min > -tau_0) {
-				if (name == "Table") {
-					std::cout << "ji" << std::endl;
-				}
+			if (obb_max < -tau_1 || obb_min > -tau_0) {				
 				return false;
 			}
 		}
@@ -1382,7 +1379,7 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 	if (root->mesh != nullptr) {
 		if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::NONE
 			|| (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM 
-				/*&& /*is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL)*/)) {
+				&& is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL))) {
 			uint32_t texture_index = 0;
 
 			if (root->mesh->material != nullptr) {
@@ -1631,13 +1628,13 @@ void Tutorial::construct_bounding_boxes(const std::vector<Vertex>& vertices)
 		float max_z = vertex.Position.z;
 
 		for (uint32_t i = 1; i < mesh_vertex.count; i++) {
-			const Vertex& vertex = vertices[mesh_vertex.first + i];
-			min_x = std::min(min_x, vertex.Position.x);
-			max_x = std::max(max_x, vertex.Position.x);
-			min_y = std::min(min_y, vertex.Position.y);
-			max_y = std::max(max_y, vertex.Position.y);
-			min_z = std::min(min_z, vertex.Position.z);
-			max_z = std::max(max_z, vertex.Position.z);
+			const Vertex& next_vertex = vertices[mesh_vertex.first + i];
+			min_x = std::min(min_x, next_vertex.Position.x);
+			max_x = std::max(max_x, next_vertex.Position.x);
+			min_y = std::min(min_y, next_vertex.Position.y);
+			max_y = std::max(max_y, next_vertex.Position.y);
+			min_z = std::min(min_z, next_vertex.Position.z);
+			max_z = std::max(max_z, next_vertex.Position.z);
 		}
 
 		mesh_bounding_boxes[name] = BoundingBox{
