@@ -81,6 +81,12 @@ struct RTG {
 		//scene file to load
 		std::string scene_file = "";
 
+		// culling mode (default: none)
+		enum class CullingMode {
+			NONE,
+			FRUSTUM
+		} culling_mode = CullingMode::NONE;
+
 		//for configuration construction + management:
 		Configuration() = default;
 		void parse(int argc, char **argv); //parse command-line options; throws on error

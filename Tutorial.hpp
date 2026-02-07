@@ -239,6 +239,16 @@ struct Tutorial : RTG::Application {
 	// loading all textures
 	void load_textures();
 
+	// construct bounding boxes
+	void construct_bounding_boxes(const std::vector<Vertex>& vertices);
+	struct BoundingBox {
+		float min_x, min_y, min_z;
+		float max_x, max_y, max_z;
+	};
+	std::unordered_map<std::string, BoundingBox> mesh_bounding_boxes;
+
+	bool is_mesh_in_frustum(const std::string& name, const BoundingBox& box, const mat4& WORLD_FROM_LOCAL);
+
 	//--------------------------------------------------------------------
 	//Rendering function, uses all the resources above to queue work to draw a frame:
 

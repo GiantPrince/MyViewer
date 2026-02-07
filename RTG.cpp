@@ -67,6 +67,21 @@ void RTG::Configuration::parse(int argc, char** argv) {
 				throw std::runtime_error("--scene parameter should be a .s72 file.");
 			}
 		}
+		else if (arg == "--culling") {
+			if (argi + 1 >= argc) 
+				throw std::runtime_error("--culling requires a parameter (culling mode).");
+			argi += 1;
+			std::string mode = argv[argi];
+			if (mode == "none") {
+				culling_mode = CullingMode::NONE;
+			}
+			else if (mode == "frustum") {
+				culling_mode = CullingMode::FRUSTUM;
+			}
+			else {
+				throw std::runtime_error("Unrecognized culling mode '" + mode + "'.");
+			}
+		}
 		else {
 			throw std::runtime_error("Unrecognized argument '" + arg + "'.");
 		}

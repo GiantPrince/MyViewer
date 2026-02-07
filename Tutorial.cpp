@@ -264,6 +264,11 @@ Tutorial::Tutorial(RTG& rtg_) : rtg(rtg_) {
 	// load meshes:
 	{
 		std::vector<Vertex> vertices = load_mesh_vertices();
+
+		if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
+			construct_bounding_boxes(vertices);
+		}
+				
 		size_t bytes = vertices.size() * sizeof(Vertex);
 		mesh_vertex_buffer = rtg.helpers.create_buffer(
 			bytes,
@@ -576,6 +581,116 @@ void Tutorial::destroy_framebuffers() {
 	rtg.helpers.destroy_image(std::move(swapchain_depth_image));
 }
 
+
+bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& box, const mat4& WORLD_FROM_LOCAL)
+{
+	float z_near = free_camera.near;
+	float z_far = free_camera.far;
+
+	float y_near = std::tan(free_camera.fov / 2.0f) * z_near;
+	float x_near = y_near * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height;
+
+	vec4 corners[4] = {
+		vec4{ box.min_x, box.min_y, box.min_z, 1.0f },
+		vec4{ box.max_x, box.min_y, box.min_z, 1.0f },
+		vec4{ box.min_x, box.max_y, box.min_z, 1.0f },
+		vec4{ box.min_x, box.min_y, box.max_z, 1.0f }
+	};
+
+	for (int i = 0; i < 4; i++) {
+		corners[i] = orbit(free_camera.target_x, free_camera.target_y, free_camera.target_z, free_camera.azimuth, free_camera.elevation, free_camera.radius) * WORLD_FROM_LOCAL * corners[i];
+	}
+
+	vec4 axes1 = corners[1] - corners[0];
+	vec4 axes2 = corners[2] - corners[0];
+	vec4 axes3 = corners[3] - corners[0];
+
+	vec4 center = corners[0] + (axes1 + axes2 + axes3) / 2.0f;
+	float x_extent = std::sqrt(axes1[0] * axes1[0] + axes1[1] * axes1[1] + axes1[2] * axes1[2]);
+	float y_extent = std::sqrt(axes2[0] * axes2[0] + axes2[1] * axes2[1] + axes2[2] * axes2[2]);
+	float z_extent = std::sqrt(axes3[0] * axes3[0] + axes3[1] * axes3[1] + axes3[2] * axes3[2]);
+
+	axes1 = axes1 / x_extent;
+	axes2 = axes2 / y_extent;
+	axes3 = axes3 / z_extent;
+
+	x_extent /= 2.0f;
+	y_extent /= 2.0f;
+	z_extent /= 2.0f;
+
+	{
+		float M_x = 0;
+		float M_y = 0;
+		float M_z = 1.0f;
+
+		float MoX = 0.0f;
+		float MoY = 0.0f;
+		float MoZ = 1.0f;
+
+		float MoC = center[2];
+
+		float radius = 0.0f;
+		radius += std::fabsf(axes1[2]) * x_extent;
+		radius += std::fabsf(axes2[2]) * y_extent;
+		radius += std::fabsf(axes3[2]) * z_extent;
+		
+		float z_min = MoC - radius;
+		float z_max = MoC + radius;
+		if (z_max > -z_near || z_min < -z_far) {
+			if (name == "Table") {
+				std::cout << name << std::endl;
+				std::cout << z_min << " " << z_max << std::endl;
+			}
+			
+			return false;
+		}
+	}
+
+	{
+		const vec4 M[] = {
+			 { 0.0,z_near, y_near, 0.0f },
+			{ 0.0, -z_near, y_near, 0.0f },
+			{ z_near, 0.0f, x_near, 0.0f },
+			{ -z_near, 0.0f, x_near, 0.0f },
+		};
+
+		for (size_t m = 0; m < 4; m++) {
+			float MoX = std::fabsf(M[m][0]);
+			float MoY = std::fabsf(M[m][1]);
+			float MoZ = M[m][2];
+			float MoC = M[m][0] * center[0] + M[m][1] * center[1] + M[m][2] * center[2];
+
+			float radius = 0.0f;
+			radius += std::fabsf(M[m][0] * axes1[0] + M[m][1] * axes1[1] + M[m][2] * axes1[2]) * x_extent;
+			radius += std::fabsf(M[m][0] * axes2[0] + M[m][1] * axes2[1] + M[m][2] * axes2[2]) * y_extent;
+			radius += std::fabsf(M[m][0] * axes3[0] + M[m][1] * axes3[1] + M[m][2] * axes3[2]) * z_extent;
+
+			
+			float obb_min = MoC - radius;
+			float obb_max = MoC + radius;
+
+			float p = x_near * MoX + y_near * MoY;
+
+			float tau_0 = z_near * MoZ - p;
+			float tau_1 = z_near * MoZ + p;
+
+			if (tau_0 < 0.0f) {
+				tau_0 *= z_far / z_near;
+			}
+			if (tau_1 > 0.0f) {
+				tau_1 *= z_far / z_near;
+			}
+
+			if (obb_max < -tau_1 || obb_min > -tau_0) {
+				if (name == "Table") {
+					std::cout << "ji" << std::endl;
+				}
+				return false;
+			}
+		}
+	}
+	return true;
+}
 
 void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 	//assert that parameters are valid:
@@ -1018,11 +1133,14 @@ void Tutorial::update(float dt) {
 		assert(0 && "only two camera modes");
 	}
 
-	lines_vertices.clear();	
+	lines_vertices.clear();
 
 	{
 		load_objects();
-	}
+	}	
+
+	
+
 }
 
 
@@ -1237,7 +1355,7 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 				world.SUN_DIRECTION.x = dir[0];
 				world.SUN_DIRECTION.y = dir[1];
 				world.SUN_DIRECTION.z = dir[2];
-				
+
 				world.SUN_ENERGY.r = sun.strength * root->light->tint.r;
 				world.SUN_ENERGY.g = sun.strength * root->light->tint.g;
 				world.SUN_ENERGY.b = sun.strength * root->light->tint.b;
@@ -1262,37 +1380,158 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 	}
 
 	if (root->mesh != nullptr) {
+		if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::NONE
+			|| (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM 
+				/*&& /*is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL)*/)) {
+			uint32_t texture_index = 0;
 
-		uint32_t texture_index = 0;
-
-		if (root->mesh->material != nullptr) {
-			// add object instance
-			if (std::holds_alternative<S72::Material::Lambertian>(root->mesh->material->brdf)) {
-				S72::Material::Lambertian lambert = std::get<S72::Material::Lambertian>(root->mesh->material->brdf);
-				if (std::holds_alternative<S72::color>(lambert.albedo)) {
-					S72::color albedo_color = std::get<S72::color>(lambert.albedo);
-					texture_index = texture_color_to_index.at(albedo_color);
+			if (root->mesh->material != nullptr) {
+				// add object instance
+				if (std::holds_alternative<S72::Material::Lambertian>(root->mesh->material->brdf)) {
+					S72::Material::Lambertian lambert = std::get<S72::Material::Lambertian>(root->mesh->material->brdf);
+					if (std::holds_alternative<S72::color>(lambert.albedo)) {
+						S72::color albedo_color = std::get<S72::color>(lambert.albedo);
+						texture_index = texture_color_to_index.at(albedo_color);
+					}
+					else if (std::holds_alternative<S72::Texture*>(lambert.albedo)) {
+						S72::Texture* albedo_texture = std::get<S72::Texture*>(lambert.albedo);
+						std::string texture_key = albedo_texture->src + ", format " + std::to_string(int(albedo_texture->type)) + ", type " + std::to_string(int(albedo_texture->format));
+						texture_index = texture_name_to_index.at(texture_key);
+					}
 				}
-				else if (std::holds_alternative<S72::Texture *>(lambert.albedo)) {
-					S72::Texture* albedo_texture = std::get<S72::Texture*>(lambert.albedo);
-					std::string texture_key = albedo_texture->src + ", format " + std::to_string(int(albedo_texture->type)) + ", type " + std::to_string(int(albedo_texture->format));
-					texture_index = texture_name_to_index.at(texture_key);
+				else {
+					throw std::runtime_error("Unsupported material type");
 				}
-			}	
-			else {
-				throw std::runtime_error("Unsupported material type");
 			}
-		}
-		object_instances.emplace_back(ObjectInstance{
-				.vertices = mesh_vertices.at(root->mesh->name),
-				.transform = {
-					.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
-					.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
-					.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL_NORMAL
-				},
-				.texture = texture_index
+			object_instances.emplace_back(ObjectInstance{
+					.vertices = mesh_vertices.at(root->mesh->name),
+					.transform = {
+						.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+						.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
+						.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL_NORMAL
+					},
+					.texture = texture_index
 
-			});
+				});
+
+			
+		}
+
+		if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
+			
+			const auto& bounding_box = mesh_bounding_boxes[root->mesh->name];
+			vec4 corners[] = {
+				vec4{ bounding_box.min_x, bounding_box.min_y, bounding_box.min_z, 1.0f },
+				vec4{ bounding_box.max_x, bounding_box.min_y, bounding_box.min_z, 1.0f },
+				vec4{ bounding_box.min_x, bounding_box.max_y, bounding_box.min_z, 1.0f },
+				vec4{ bounding_box.max_x, bounding_box.max_y, bounding_box.min_z, 1.0f },
+				vec4{ bounding_box.min_x, bounding_box.min_y, bounding_box.max_z, 1.0f },
+				vec4{ bounding_box.max_x, bounding_box.min_y, bounding_box.max_z, 1.0f },
+				vec4{ bounding_box.min_x, bounding_box.max_y, bounding_box.max_z, 1.0f },
+				vec4{ bounding_box.max_x, bounding_box.max_y, bounding_box.max_z, 1.0f },
+			};
+
+			for (int i = 0; i < 8; i++) {
+				corners[i] = WORLD_FROM_LOCAL * corners[i];
+			}
+
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[0][0], .y = corners[0][1], .z = corners[0][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[1][0], .y = corners[1][1], .z = corners[1][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[0][0], .y = corners[0][1], .z = corners[0][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[2][0], .y = corners[2][1], .z = corners[2][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[0][0], .y = corners[0][1], .z = corners[0][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[4][0], .y = corners[4][1], .z = corners[4][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[7][0], .y = corners[7][1], .z = corners[7][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[6][0], .y = corners[6][1], .z = corners[6][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[5][0], .y = corners[5][1], .z = corners[5][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[7][0], .y = corners[7][1], .z = corners[7][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[7][0], .y = corners[7][1], .z = corners[7][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[3][0], .y = corners[3][1], .z = corners[3][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[4][0], .y = corners[4][1], .z = corners[4][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[5][0], .y = corners[5][1], .z = corners[5][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[4][0], .y = corners[4][1], .z = corners[4][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[6][0], .y = corners[6][1], .z = corners[6][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[2][0], .y = corners[2][1], .z = corners[2][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[6][0], .y = corners[6][1], .z = corners[6][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[2][0], .y = corners[2][1], .z = corners[2][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[3][0], .y = corners[3][1], .z = corners[3][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[1][0], .y = corners[1][1], .z = corners[1][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[5][0], .y = corners[5][1], .z = corners[5][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[1][0], .y = corners[1][1], .z = corners[1][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});
+			lines_vertices.emplace_back(PosColVertex{
+				.Position = {.x = corners[3][0], .y = corners[3][1], .z = corners[3][2] },
+				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+				});						
+		}
 		
 	}
 
@@ -1357,7 +1596,7 @@ void Tutorial::load_textures() {
 			S72::Material::Lambertian lambert =
 				std::get<S72::Material::Lambertian>(material.brdf);
 			if (std::holds_alternative<S72::color>(lambert.albedo)) {
-				S72::color albedo_color = std::get<S72::color>(lambert.albedo);	
+				S72::color albedo_color = std::get<S72::color>(lambert.albedo);				
 				if (texture_color_to_index.count(albedo_color) == 0) {
 					textures.emplace_back(rtg.helpers.create_image(
 						VkExtent2D{ .width = 1, .height = 1 },
@@ -1367,15 +1606,44 @@ void Tutorial::load_textures() {
 						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 						Helpers::Unmapped
 					));
-					rtg.helpers.transfer_to_image(&albedo_color, 12, textures.back());
+					rtg.helpers.transfer_to_image(&lambert.albedo, 12, textures.back());
 					texture_color_to_index[albedo_color] = static_cast<uint32_t>(textures.size() - 1);
 				}
-				
+
 			}
 			else {
 				throw std::runtime_error("Unsupported material type");
 			}
 		}
+	}
+}
+
+void Tutorial::construct_bounding_boxes(const std::vector<Vertex>& vertices)
+{
+	mesh_bounding_boxes.reserve(mesh_vertices.size());
+	for (const auto& [name, mesh_vertex] : mesh_vertices) {
+		const Vertex& vertex = vertices[mesh_vertex.first];
+		float min_x = vertex.Position.x;
+		float max_x = vertex.Position.x;
+		float min_y = vertex.Position.y;
+		float max_y = vertex.Position.y;
+		float min_z = vertex.Position.z;
+		float max_z = vertex.Position.z;
+
+		for (uint32_t i = 1; i < mesh_vertex.count; i++) {
+			const Vertex& vertex = vertices[mesh_vertex.first + i];
+			min_x = std::min(min_x, vertex.Position.x);
+			max_x = std::max(max_x, vertex.Position.x);
+			min_y = std::min(min_y, vertex.Position.y);
+			max_y = std::max(max_y, vertex.Position.y);
+			min_z = std::min(min_z, vertex.Position.z);
+			max_z = std::max(max_z, vertex.Position.z);
+		}
+
+		mesh_bounding_boxes[name] = BoundingBox{
+			.min_x = min_x, .min_y = min_y, .min_z = min_z,
+			.max_x = max_x, .max_y = max_y, .max_z = max_z
+		};
 	}
 }
 

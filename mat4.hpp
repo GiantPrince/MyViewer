@@ -38,6 +38,30 @@ inline mat4 operator*(mat4 const& A, mat4 const& B) {
 	return ret;
 }
 
+inline vec4 operator-(const vec4& a, const vec4& b) {
+	vec4 ret;
+	for (uint32_t i = 0; i < 4; ++i) {
+		ret[i] = a[i] - b[i];
+	}
+	return ret;
+}
+
+inline vec4 operator+(const vec4& a, const vec4& b) {
+	vec4 ret;
+	for (uint32_t i = 0; i < 4; ++i) {
+		ret[i] = a[i] + b[i];
+	}
+	return ret;
+}
+
+inline vec4 operator/(const vec4& a, const float& f) {
+	vec4 ret;
+	for (uint32_t i = 0; i < 4; ++i) {
+		ret[i] = a[i] / f;
+	}
+	return ret;
+}
+
 // perspective projection matrix
 // -vfov is fov in radians
 // - near maps to 0 and far maps to 1

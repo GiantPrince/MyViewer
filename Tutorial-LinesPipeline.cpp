@@ -1,7 +1,6 @@
 #include "Tutorial.hpp"
 
 #include "Helpers.hpp"
-#include "refsol.hpp"
 
 #include "VK.hpp"
 
