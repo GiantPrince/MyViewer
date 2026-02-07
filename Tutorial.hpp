@@ -199,8 +199,11 @@ struct Tutorial : RTG::Application {
 
 	enum class CameraMode {
 		Scene = 0,
-		Free = 1
-	} camera_mode = CameraMode::Free;
+		Free = 1,
+		Debug = 2
+	} camera_mode = CameraMode::Scene;
+
+	CameraMode previous_camera_mode = CameraMode::Scene;
 
 	//used when camera_mode == CameraMode::Free:
 	struct OrbitCamera {
@@ -210,7 +213,10 @@ struct Tutorial : RTG::Application {
 		float elevation = 0.25 * float(M_PI);
 		float fov = 60.0f * float(M_PI) / 180.0f;
 		float near = 0.1f;
-		float far = 1000.0f;
+		float far = 10.0f;
+		float aspect = 1.0f;
+		float eye_x = 0, eye_y = 0, eye_z = 0;
+		float up_x = 0, up_y = 0, up_z = 0;
 	} free_camera;
 
 	//computed from the current camera (as set by camera_mode) during update():
@@ -249,6 +255,8 @@ struct Tutorial : RTG::Application {
 
 	bool is_mesh_in_frustum(const std::string& name, const BoundingBox& box, const mat4& WORLD_FROM_LOCAL);
 
+	// draw the frustum lines
+	void draw_frustum();
 	//--------------------------------------------------------------------
 	//Rendering function, uses all the resources above to queue work to draw a frame:
 

@@ -87,6 +87,9 @@ struct RTG {
 			FRUSTUM
 		} culling_mode = CullingMode::NONE;
 
+		// camera name
+		std::string camera_name = "";
+
 		//for configuration construction + management:
 		Configuration() = default;
 		void parse(int argc, char **argv); //parse command-line options; throws on error
@@ -216,5 +219,6 @@ struct RTG {
 
 	//the scene
 	S72 scene;
+	
 
 };

@@ -404,6 +404,14 @@ Tutorial::Tutorial(RTG& rtg_) : rtg(rtg_) {
 
 	}
 
+	// camera
+	if (rtg.configuration.camera_name != "") {
+		camera_mode = CameraMode::Scene;
+	}
+	else {
+		camera_mode = CameraMode::Free;
+	}
+
 
 }
 
@@ -693,6 +701,198 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 	return true;
 }
 
+void Tutorial::draw_frustum()
+{
+	float ca = std::cos(free_camera.azimuth);
+	float sa = std::sin(free_camera.azimuth);
+	float ce = std::cos(free_camera.elevation);
+	float se = std::sin(free_camera.elevation);
+
+	//compute right direction
+	float right_x = -sa;
+	float right_y = ca;
+	float right_z = 0.0f;
+
+	//compute up direction
+	float up_x = -se * ca;
+	float up_y = -se * sa;
+	float up_z = ce;
+
+	//compute out direction
+	float out_x = ce * ca;
+	float out_y = ce * sa;
+	float out_z = se;
+
+	float cam_x = free_camera.target_x + free_camera.radius * out_x;
+	float cam_y = free_camera.target_y + free_camera.radius * out_y;
+	float cam_z = free_camera.target_z + free_camera.radius * out_z;
+
+	float near_y = std::tan(free_camera.fov / 2.0f) * free_camera.near - 0.01f;
+	float near_x = near_y * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height - 0.01f;
+
+	float far_y = std::tan(free_camera.fov / 2.0f) * free_camera.far - 0.01f;
+	float far_x = far_y * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height -0.01f;
+
+	free_camera.near += 0.01f;
+	free_camera.far -= 0.01f;	
+	float near_top_left_x = cam_x + (-out_x * free_camera.near) + (up_x * near_y) - (right_x * near_x);
+	float near_top_left_y = cam_y + (-out_y * free_camera.near) + (up_y * near_y) - (right_y * near_x);
+	float near_top_left_z = cam_z + (-out_z * free_camera.near) + (up_z * near_y) - (right_z * near_x);
+
+	float near_top_right_x = cam_x + (-out_x * free_camera.near) + (up_x * near_y) + (right_x * near_x);
+	float near_top_right_y = cam_y + (-out_y * free_camera.near) + (up_y * near_y) + (right_y * near_x);
+	float near_top_right_z = cam_z + (-out_z * free_camera.near) + (up_z * near_y) + (right_z * near_x);
+
+	float near_bottom_left_x = cam_x + (-out_x * free_camera.near) + (-up_x * near_y) - (right_x * near_x);
+	float near_bottom_left_y = cam_y + (-out_y * free_camera.near) + (-up_y * near_y) - (right_y * near_x);
+	float near_bottom_left_z = cam_z + (-out_z * free_camera.near) + (-up_z * near_y) - (right_z * near_x);
+
+	float near_bottom_right_x = cam_x + (-out_x * free_camera.near) + (-up_x * near_y) + (right_x * near_x);
+	float near_bottom_right_y = cam_y + (-out_y * free_camera.near) + (-up_y * near_y) + (right_y * near_x);
+	float near_bottom_right_z = cam_z + (-out_z * free_camera.near) + (-up_z * near_y) + (right_z * near_x);
+
+	float far_top_left_x = cam_x + (-out_x * free_camera.far) + (up_x * far_y) - (right_x * far_x);
+	float far_top_left_y = cam_y + (-out_y * free_camera.far) + (up_y * far_y) - (right_y * far_x);
+	float far_top_left_z = cam_z + (-out_z * free_camera.far) + (up_z * far_y) - (right_z * far_x);
+
+	float far_top_right_x = cam_x + (-out_x * free_camera.far) + (up_x * far_y) + (right_x * far_x);
+	float far_top_right_y = cam_y + (-out_y * free_camera.far) + (up_y * far_y) + (right_y * far_x);
+	float far_top_right_z = cam_z + (-out_z * free_camera.far) + (up_z * far_y) + (right_z * far_x);
+
+	float far_bottom_left_x = cam_x + (-out_x * free_camera.far) + (-up_x * far_y) - (right_x * far_x);
+	float far_bottom_left_y = cam_y + (-out_y * free_camera.far) + (-up_y * far_y) - (right_y * far_x);
+	float far_bottom_left_z = cam_z + (-out_z * free_camera.far) + (-up_z * far_y) - (right_z * far_x);
+
+	float far_bottom_right_x = cam_x + (-out_x * free_camera.far) + (-up_x * far_y) + (right_x * far_x);
+	float far_bottom_right_y = cam_y + (-out_y * free_camera.far) + (-up_y * far_y) + (right_y * far_x);
+	float far_bottom_right_z = cam_z + (-out_z * free_camera.far) + (-up_z * far_y) + (right_z * far_x);
+
+	free_camera.near -= 0.01f;
+	free_camera.far += 0.01f;
+
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = near_top_left_x, .y = near_top_left_y, .z = near_top_left_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = near_top_right_x, .y = near_top_right_y, .z = near_top_right_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = near_top_right_x, .y = near_top_right_y, .z = near_top_right_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = near_bottom_right_x, .y = near_bottom_right_y, .z = near_bottom_right_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = near_bottom_right_x, .y = near_bottom_right_y, .z = near_bottom_right_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = near_bottom_left_x, .y = near_bottom_left_y, .z = near_bottom_left_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = near_bottom_left_x, .y = near_bottom_left_y, .z = near_bottom_left_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = near_top_left_x, .y = near_top_left_y, .z = near_top_left_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = near_top_left_x, .y = near_top_left_y, .z = near_top_left_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = far_top_left_x, .y = far_top_left_y, .z = far_top_left_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = near_top_right_x, .y = near_top_right_y, .z = near_top_right_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = far_top_right_x, .y = far_top_right_y, .z = far_top_right_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});	
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = near_bottom_right_x, .y = near_bottom_right_y, .z = near_bottom_right_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = far_bottom_right_x, .y = far_bottom_right_y, .z = far_bottom_right_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});	
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = near_bottom_left_x, .y = near_bottom_left_y, .z = near_bottom_left_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = far_bottom_left_x, .y = far_bottom_left_y, .z = far_bottom_left_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+
+	// ================= Far plane =================
+	
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = far_top_left_x, .y = far_top_left_y, .z = far_top_left_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = far_top_right_x, .y = far_top_right_y, .z = far_top_right_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = far_top_right_x, .y = far_top_right_y, .z = far_top_right_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = far_bottom_right_x, .y = far_bottom_right_y, .z = far_bottom_right_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = far_bottom_right_x, .y = far_bottom_right_y, .z = far_bottom_right_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = far_bottom_left_x, .y = far_bottom_left_y, .z = far_bottom_left_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = far_bottom_left_x, .y = far_bottom_left_y, .z = far_bottom_left_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = far_top_left_x, .y = far_top_left_y, .z = far_top_left_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = cam_x, .y = cam_y, .z = cam_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = free_camera.target_x + right_x + up_x, .y = free_camera.target_y + right_y + up_y, .z = free_camera.target_z + right_z + up_z},
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = cam_x, .y = cam_y, .z = cam_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+	lines_vertices.emplace_back(PosColVertex{
+		.Position = {.x = cam_x - out_x * 2 - right_x - up_x, .y = cam_y - out_y * 2 - right_y - up_y, .z = cam_z - out_z * 2 - right_z - up_z },
+		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
+		});
+
+}
+
 void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 	//assert that parameters are valid:
 	assert(&rtg == &rtg_);
@@ -931,7 +1131,7 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 	//render pass
 	{
 		std::array<VkClearValue, 2> clear_values{
-			VkClearValue{.color = {.float32{1.0f, 0.5f, 1.0f, 1.0f}} },
+			VkClearValue{.color = {.float32{0.0f, 0.0f, 0.0f, 1.0f}} },
 			VkClearValue{.depthStencil = {.depth = 1.0f, .stencil = 0}}
 		};
 
@@ -956,15 +1156,43 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 			vkCmdSetScissor(workspace.command_buffer, 0, 1, &scissor);
 
-			VkViewport viewport{
-				.x = 0,
-				.y = 0,
-				.width = float(rtg.swapchain_extent.width),
-				.height = float(rtg.swapchain_extent.height),
-				.minDepth = 0.0f,
-				.maxDepth = 1.0f
-			};
-			vkCmdSetViewport(workspace.command_buffer, 0, 1, &viewport);
+			if (camera_mode == CameraMode::Scene) {
+				float x_scale = 1.0f;
+				float y_scale = 1.0f;
+
+				float image_aspect = rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height;
+				
+				if (image_aspect > free_camera.aspect) {
+					x_scale = free_camera.aspect / image_aspect;
+				}
+				else {
+					y_scale = image_aspect / free_camera.aspect;
+				}
+
+				VkViewport viewport{
+					.x = (1 - x_scale) * 0.5f * float(rtg.swapchain_extent.width),
+					.y = (1 - y_scale) * 0.5f * float(rtg.swapchain_extent.height),
+					.width = float(rtg.swapchain_extent.width) * x_scale,
+					.height = float(rtg.swapchain_extent.height) * y_scale,
+					.minDepth = 0.0f,
+					.maxDepth = 1.0f
+				};
+				vkCmdSetViewport(workspace.command_buffer, 0, 1, &viewport);
+			}
+			else {
+
+				VkViewport viewport{
+					.x = 0,
+					.y = 0,
+					.width = float(rtg.swapchain_extent.width),
+					.height = float(rtg.swapchain_extent.height),
+					.minDepth = 0.0f,
+					.maxDepth = 1.0f
+				};
+				vkCmdSetViewport(workspace.command_buffer, 0, 1, &viewport);
+			}
+
+			
 		}
 
 		{
@@ -1103,22 +1331,27 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 void Tutorial::update(float dt) {
 	time += dt;
 
-	if (camera_mode == CameraMode::Scene)
-	{
-		float ang = float(M_PI) * 2.0f * 20.0f * (time / 60.0f);
-		CLIP_FROM_WORLD = perspective(
-			60.0f * float(M_PI) / 180.0f,
-			rtg.swapchain_extent.width / float(rtg.swapchain_extent.height),
-			0.1f,
-			1000.0f
-		) * look_at(
-			3.0f * std::cos(ang), 3.0f * std::sin(ang), 3.0f * std::sin(ang),
-			0.0f, 0.0f, 0.0f,
-			0.0f, 0.0f, 1.0f
-		);
+	
 
+	lines_vertices.clear();
+
+	{
+		load_objects();
 	}
 
+	if (camera_mode == CameraMode::Scene)
+	{		
+		CLIP_FROM_WORLD = perspective(
+			free_camera.fov,
+			free_camera.aspect,
+			free_camera.near,
+			free_camera.far
+		) * look_at(
+			free_camera.eye_x, free_camera.eye_y, free_camera.eye_z,
+			free_camera.target_x, free_camera.target_y, free_camera.target_z,
+			free_camera.up_x, free_camera.up_y, free_camera.up_z
+		);
+	}
 	else if (camera_mode == CameraMode::Free) {
 		CLIP_FROM_WORLD = perspective(
 			free_camera.fov,
@@ -1134,18 +1367,18 @@ void Tutorial::update(float dt) {
 		assert(0 && "only two camera modes");
 	}
 
-	lines_vertices.clear();
-
+	if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM)
 	{
-		load_objects();
-	}	
+		draw_frustum();
+	}
+	
 
 	
 
 }
 
 
-void Tutorial::on_input(InputEvent const& evt) {
+void Tutorial::on_input(InputEvent const& evt) {	
 	if (action) {
 		action(evt);
 		return;
@@ -1153,7 +1386,7 @@ void Tutorial::on_input(InputEvent const& evt) {
 
 	// general
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_TAB) {
-		camera_mode = CameraMode((int(camera_mode) + 1) % 2);
+		camera_mode = CameraMode((int(camera_mode) + 1) % 3);
 		return;
 	}
 
@@ -1341,6 +1574,31 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 
 	const mat4 WORLD_FROM_LOCAL = world_from_local * parent_from_local;
 	const mat4 WORLD_FROM_LOCAL_NORMAL = world_from_local_normal * parent_from_local_normal;
+
+	if (camera_mode == CameraMode::Scene && root->camera != nullptr) {
+		assert(root->camera->name == rtg.configuration.camera_name);
+		if (std::holds_alternative<S72::Camera::Perspective>(root->camera->projection)) {
+			S72::Camera::Perspective perspective = std::get<S72::Camera::Perspective>(root->camera->projection);
+			free_camera.fov = perspective.vfov;
+			free_camera.near = perspective.near;
+			free_camera.far = perspective.far;
+			free_camera.aspect = perspective.aspect;
+		}
+		vec4 cam_pos = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 0.0f, 1.0f };
+		free_camera.eye_x = cam_pos[0];
+		free_camera.eye_y = cam_pos[1];
+		free_camera.eye_z = cam_pos[2];
+
+		vec4 forward = WORLD_FROM_LOCAL_NORMAL * vec4{ 0.0f, 0.0f, -1.0f, 0.0f };
+		free_camera.target_x = free_camera.eye_x + forward[0];
+		free_camera.target_y = free_camera.eye_y + forward[1];
+		free_camera.target_z = free_camera.eye_z + forward[2];
+
+		vec4 up = WORLD_FROM_LOCAL_NORMAL * vec4{ 0.0f, 1.0f, 0.0f, 0.0f };
+		free_camera.up_x = up[0];
+		free_camera.up_y = up[1];
+		free_camera.up_z = up[2];
+	}
 
 	if (root->light != nullptr) {
 		if (std::holds_alternative<S72::Light::Sun>(root->light->source)) {

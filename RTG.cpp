@@ -82,6 +82,13 @@ void RTG::Configuration::parse(int argc, char** argv) {
 				throw std::runtime_error("Unrecognized culling mode '" + mode + "'.");
 			}
 		}
+		else if (arg == "--camera") {
+			if (argi + 1 >= argc) {
+				throw std::runtime_error("--camera requires a parameter (camera name).");
+			}
+			argi += 1;
+			camera_name = argv[argi];
+		}
 		else {
 			throw std::runtime_error("Unrecognized argument '" + arg + "'.");
 		}
@@ -146,6 +153,11 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 		// load the scene
 		try {
 			scene = S72::load(configuration.scene_file);
+
+			// check camera
+			if (configuration.camera_name != "") {
+				scene.cameras.at(configuration.camera_name);
+			}			
 		}
 		catch (std::exception const& e) {
 			std::cerr << "Scene loading failed:\n" << e.what() << std::endl;
