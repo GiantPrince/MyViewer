@@ -636,8 +636,8 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 		
 		float z_min = MoC - radius;
 		float z_max = MoC + radius;
-		if (z_max > -z_near || z_min < -z_far) {
-			if (name == "Table") {
+		if (z_max < -z_far || z_min > -z_near) {
+			if (name == "Room") {
 				std::cout << name << std::endl;
 				std::cout << z_min << " " << z_max << std::endl;
 			}
@@ -681,7 +681,11 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 				tau_1 *= z_far / z_near;
 			}
 
-			if (obb_max < -tau_1 || obb_min > -tau_0) {				
+			if (obb_max < -tau_1 || obb_min > -tau_0) {		
+				if (name == "Room") {
+					std::cout << name << std::endl;
+					
+				}
 				return false;
 			}
 		}
