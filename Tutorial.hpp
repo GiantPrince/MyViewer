@@ -198,9 +198,9 @@ struct Tutorial : RTG::Application {
 	float time = 0.0f;
 
 	enum class CameraMode {
-		Scene = 0,
-		Debug = 1,
-		Free = 2,
+		Scene = 0,		
+		Free = 1,
+		Debug = 2,
 		
 	} camera_mode = CameraMode::Scene;
 

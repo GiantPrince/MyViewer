@@ -411,9 +411,11 @@ Tutorial::Tutorial(RTG& rtg_) : rtg(rtg_) {
 	// camera
 	if (rtg.configuration.camera_name != "") {
 		camera_mode = CameraMode::Scene;
+		previous_camera_mode = CameraMode::Scene;
 	}
 	else {
 		camera_mode = CameraMode::Free;
+		previous_camera_mode = CameraMode::Free;
 	}
 
 
@@ -1850,7 +1852,16 @@ void Tutorial::load_objects() {
 	}
 
 	for (auto& [name, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL] : delayed_culling_objects) {
-		render_mesh(rtg.scene.meshes[name], WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
+		// must be scene camera
+		if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
+			if (is_mesh_in_frustum(name, mesh_bounding_boxes[name], WORLD_FROM_LOCAL)) {
+				render_mesh(rtg.scene.meshes[name], WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
+			}
+		}
+		else {
+			render_mesh(rtg.scene.meshes[name], WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
+		}
+		
 	}
 }
 
@@ -1987,10 +1998,14 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 		}
 		else if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
 			if (camera_mode != CameraMode::Scene) {
-				render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+				if (is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL)) {
+					render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+				}				
 			}
 			else if (scene_camera.ready) {
-				render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+				if (is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL)) {
+					render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+				}
 			}
 			else {
 				delayed_culling_objects.emplace_back(root->mesh->name, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
