@@ -2171,6 +2171,7 @@ void Tutorial::load_textures() {
 
 	for (const auto& [name, texture] : rtg.scene.textures) {
 		int tex_width, tex_height, tex_channels;
+		stbi_set_flip_vertically_on_load(true);
 		unsigned char* image = stbi_load(texture.path.c_str(), &tex_width, &tex_height, &tex_channels, 0);
 		if (image == nullptr) {
 			throw std::runtime_error("Failed to load texture image: " + texture.path);
@@ -2225,6 +2226,9 @@ void Tutorial::load_textures() {
 					texture_color_to_index[albedo_color] = static_cast<uint32_t>(textures.size() - 1);
 				}
 
+			}
+			else if (std::holds_alternative<S72::Texture*>(lambert.albedo)) {
+				
 			}
 			else {
 				throw std::runtime_error("Unsupported material type");
