@@ -796,7 +796,7 @@ void Tutorial::draw_frustum()
 		far_z = free_camera.far;
 	}
 	else if (previous_camera_mode == CameraMode::Scene) {
-		right_x = scene_camera.forward_y * scene_camera.up_z - scene_camera.forward_y * scene_camera.up_z;
+		right_x = scene_camera.forward_y * scene_camera.up_z - scene_camera.up_y * scene_camera.forward_z;
 		right_y = scene_camera.forward_z * scene_camera.up_x - scene_camera.forward_x * scene_camera.up_z;
 		right_z = scene_camera.forward_x * scene_camera.up_y - scene_camera.forward_y * scene_camera.up_x;
 

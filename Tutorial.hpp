@@ -239,7 +239,7 @@ struct Tutorial : RTG::Application {
 		.elevation = 0.25f * float(M_PI),
 		.fov = 60.0f * float(M_PI) / 180.0f,
 		.near = 0.1f,
-		.far = 1000.0f
+		.far = 10000.0f
 	};
 
 	//computed from the current camera (as set by camera_mode) during update():
