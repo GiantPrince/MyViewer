@@ -86,6 +86,15 @@ inline float dot(const vec4& a, const vec4& b) {
 	return ret;
 }
 
+inline vec4 cross(const vec4& a, const vec4& b) {
+	vec4 ret;
+	ret[0] = a[1] * b[2] - a[2] * b[1];
+	ret[1] = a[2] * b[0] - a[0] * b[2];
+	ret[2] = a[0] * b[1] - a[1] * b[0];
+	ret[3] = 0.0f;
+	return ret;
+}
+
 // perspective projection matrix
 // -vfov is fov in radians
 // - near maps to 0 and far maps to 1

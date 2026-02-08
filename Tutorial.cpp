@@ -709,12 +709,49 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 		vec4{ far_bottom_right_x,  far_bottom_right_y,  far_bottom_right_z,  1.0f }
 	};
 
-	std::array<vec4, 5> axes{
+	const vec4 u{ 0, 1, 0, 0 };
+	const vec4 r{ 1, 0, 0, 0 };
+
+	const std::array<vec4, 3> box_axes{
+		corners[1] - corners[0],
+		corners[2] - corners[0],
+		corners[4] - corners[0]
+	};
+
+	const std::array<vec4, 4> frustum_edges{
+		vec4{-near_x, near_y, near_z, 0},
+		vec4{near_x, near_y, near_z, 0},
+		vec4{near_x, -near_y, near_z, 0},
+		vec4{-near_x, -near_y, near_z, 0},
+	};
+
+	std::array<vec4, 26> axes{
 		vec4{ 0, 0, 1, 0 },
 		vec4{ near_z, 0, -near_x, 0 },
 		vec4{ -near_z, 0, -near_x, 0 },
 		vec4{ 0, -near_z, -near_y, 0 },
-		vec4{ 0, -near_z, -near_y, 0 },		
+		vec4{ 0, -near_z, -near_y, 0 },	
+		box_axes[0],
+		box_axes[1],
+		box_axes[2],
+		cross(box_axes[0], u),
+		cross(box_axes[1], u),
+		cross(box_axes[2], u),
+		cross(box_axes[0], r),
+		cross(box_axes[1], r),
+		cross(box_axes[2], r),
+		cross(box_axes[0], frustum_edges[0]),
+		cross(box_axes[0], frustum_edges[1]),
+		cross(box_axes[0], frustum_edges[2]),
+		cross(box_axes[0], frustum_edges[3]),
+		cross(box_axes[1], frustum_edges[0]),
+		cross(box_axes[1], frustum_edges[1]),
+		cross(box_axes[1], frustum_edges[2]),
+		cross(box_axes[1], frustum_edges[3]),
+		cross(box_axes[2], frustum_edges[0]),
+		cross(box_axes[2], frustum_edges[1]),		
+		cross(box_axes[2], frustum_edges[2]),		
+		cross(box_axes[2], frustum_edges[3]),				
 	};
 
 	for (const auto& axis : axes) {
