@@ -253,8 +253,7 @@ struct Tutorial : RTG::Application {
 		uint32_t texture = 0;
 	};
 	std::vector<ObjectInstance> object_instances;
-	
-	
+		
 	ObjectsPipeline::World world;
 
 

@@ -2,6 +2,8 @@
 
 #include "VK.hpp"
 
+#include "Timer.hpp"
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.hpp"
 
@@ -595,8 +597,8 @@ void Tutorial::destroy_framebuffers() {
 bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& box, const mat4& WORLD_FROM_LOCAL)
 {	
 
-	float near_y, near_x, far_y, far_x;
-	float near_z, far_z;
+	float near_y = 0, near_x = 0, far_y = 0, far_x = 0;
+	float near_z = 0, far_z = 0;
 
 	if (camera_mode == CameraMode::Scene || (camera_mode == CameraMode::Debug && previous_camera_mode == CameraMode::Scene)) {
 		
@@ -625,9 +627,7 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 	else {
 		assert(false && "invalid camera mode");		
 	}
-	if (name == "Green-Carton") {
-		int a = 1;
-	}
+	
 	std::array<vec4, 8> corners{
 		vec4{ box.min_x, box.min_y, box.min_z, 1.0f },
 		vec4{ box.max_x, box.min_y, box.min_z, 1.0f },
@@ -649,6 +649,15 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 	}
 	else if (previous_camera_mode == CameraMode::Free) {
 		view_from_world = orbit(free_camera.target_x, free_camera.target_y, free_camera.target_z, free_camera.azimuth, free_camera.elevation, free_camera.radius);
+	}
+	else {
+		assert(false && "invalid camera mode");
+		view_from_world = mat4{
+			1.0f, 0.0f, 0.0f, 0.0f,
+			0.0f, 1.0f, 0.0f, 0.0f,
+			0.0f, 0.0f, 1.0f, 0.0f,
+			0.0f, 0.0f, 0.0f, 1.0f
+		};
 	}
 
 	for (int i = 0; i < corners.size(); i++) {
@@ -702,16 +711,14 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 
 	std::array<vec4, 5> axes{
 		vec4{ 0, 0, 1, 0 },
-		vec4{ near_z, 0, -near_x },
-		vec4{ -near_z, 0, -near_x },
-		vec4{ 0, -near_z, -near_y },
-		vec4{ 0, -near_z, -near_y },
+		vec4{ near_z, 0, -near_x, 0 },
+		vec4{ -near_z, 0, -near_x, 0 },
+		vec4{ 0, -near_z, -near_y, 0 },
+		vec4{ 0, -near_z, -near_y, 0 },		
 	};
 
 	for (const auto& axis : axes) {
-		if (name == "Green-Carton") {
-			int a = 1;
-		}
+		
 		if (!sat_intersect(corners, frustum_corners, axis)) {
 			return false;
 		}
@@ -1077,7 +1084,7 @@ void Tutorial::update_driver_channels(float dt)
 
 std::pair<uint32_t, uint32_t> Tutorial::find_time_interval(const std::vector<float>& times, float t)
 {
-	int end_index = std::upper_bound(times.begin(), times.end(), t) - times.begin();
+	uint32_t end_index = static_cast<uint32_t>(std::upper_bound(times.begin(), times.end(), t) - times.begin());
 	if (end_index == 0) {
 		return { 0, 0 };
 	}	
@@ -1102,15 +1109,29 @@ vec4 Tutorial::interpolate(const vec4& start, const vec4& end, float t, S72::Dri
 			dot_value = -dot_value;
 		}
 
+		dot_value = std::clamp(dot_value, -1.0f, 1.0f);
+		const float epsilon = 1e-5f;
+		if (dot_value > 1.0f - epsilon) {
+			vec4 result = start + (end - start) * t;
+			return result;
+		}
+
 		float theta = std::acosf(dot_value);
 		float st = sin(theta);
 		float s_0 = std::sinf((1.0f - t) * theta) / st;
 		float s_1 = std::sinf(t * theta) / st;
 		return start_mod * s_0 + end * s_1;
 	}
+	else {
+		assert(false && "unhandled interpolation type");
+		return vec4{ 0,0,0,0 };
+	}
 }
 
 void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
+
+	static std::unique_ptr<Timer> timer;
+	timer.reset(new Timer([](double d) { std::cout << "REPORT frame-time " << d * 1000.0 << "ms" << std::endl; }));
 	//assert that parameters are valid:
 	assert(&rtg == &rtg_);
 	assert(render_params.workspace_index < workspaces.size());

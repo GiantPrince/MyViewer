@@ -156,7 +156,7 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 
 			// check camera
 			if (configuration.camera_name != "") {
-				scene.cameras.at(configuration.camera_name);
+				auto cam = scene.cameras.at(configuration.camera_name);
 			}			
 		}
 		catch (std::exception const& e) {
