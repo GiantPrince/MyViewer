@@ -1165,6 +1165,26 @@ vec4 Tutorial::interpolate(const vec4& start, const vec4& end, float t, S72::Dri
 	}
 }
 
+S72::color Tutorial::srgb_to_linear(const S72::color& c)
+{
+	auto srgb_to_linear_channel = [](float channel) {
+		//return pow(channel, 2.2f);
+		return channel;
+		/*if (channel <= 0.04045f) {
+			return channel / 12.92f;
+		}
+		else {
+			return std::pow((channel + 0.055f) / 1.055f, 2.4f);
+		}*/
+	};
+
+	return S72::color{
+		srgb_to_linear_channel(c.r),
+		srgb_to_linear_channel(c.g),
+		srgb_to_linear_channel(c.b),		
+	};
+}
+
 void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 	static std::unique_ptr<Timer> timer;
@@ -2146,7 +2166,7 @@ void Tutorial::load_textures() {
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		Helpers::Unmapped
 	));
-
+	
 	rtg.helpers.transfer_to_image(&default_material_albedo, 12, textures.back());
 
 	for (const auto& [name, texture] : rtg.scene.textures) {
@@ -2189,7 +2209,8 @@ void Tutorial::load_textures() {
 			S72::Material::Lambertian lambert =
 				std::get<S72::Material::Lambertian>(material.brdf);
 			if (std::holds_alternative<S72::color>(lambert.albedo)) {
-				S72::color albedo_color = std::get<S72::color>(lambert.albedo);				
+				S72::color albedo_color = std::get<S72::color>(lambert.albedo);	
+				
 				if (texture_color_to_index.count(albedo_color) == 0) {
 					textures.emplace_back(rtg.helpers.create_image(
 						VkExtent2D{ .width = 1, .height = 1 },
@@ -2199,7 +2220,8 @@ void Tutorial::load_textures() {
 						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 						Helpers::Unmapped
 					));
-					rtg.helpers.transfer_to_image(&lambert.albedo, 12, textures.back());
+					
+					rtg.helpers.transfer_to_image(&albedo_color, 12, textures.back());
 					texture_color_to_index[albedo_color] = static_cast<uint32_t>(textures.size() - 1);
 				}
 

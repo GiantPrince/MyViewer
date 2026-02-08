@@ -305,7 +305,7 @@ struct Tutorial : RTG::Application {
 	};
 	std::unordered_map <std::string, std::variant<DriverTranslationValue, DriverScaleValue, DriverRotationValue>> driver_channel_values;
 
-	
+	S72::color srgb_to_linear(const S72::color& c);
 	//--------------------------------------------------------------------
 	//Rendering function, uses all the resources above to queue work to draw a frame:
 
