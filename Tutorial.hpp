@@ -199,8 +199,9 @@ struct Tutorial : RTG::Application {
 
 	enum class CameraMode {
 		Scene = 0,
-		Free = 1,
-		Debug = 2
+		Debug = 1,
+		Free = 2,
+		
 	} camera_mode = CameraMode::Scene;
 
 	CameraMode previous_camera_mode = CameraMode::Scene;
@@ -225,7 +226,10 @@ struct Tutorial : RTG::Application {
 		float near = 0.1f;
 		float far = 10.0f;
 		float aspect = 1.0f;
+		bool ready = false;
 	} scene_camera;
+
+	std::vector<std::tuple<std::string, mat4, mat4>> delayed_culling_objects;
 
 	//used when camera_mode == CameraMode::Debug:
 	OrbitCamera debug_camera{
@@ -260,6 +264,7 @@ struct Tutorial : RTG::Application {
 	// loading all objects
 	void load_objects();
 	void load_objects(const S72::Node* root, const mat4& world_from_local, const mat4& world_from_local_normal);
+	void render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, const mat4& world_from_local_normal);
 
 	// loading all textures
 	void load_textures();
@@ -273,9 +278,35 @@ struct Tutorial : RTG::Application {
 	std::unordered_map<std::string, BoundingBox> mesh_bounding_boxes;
 
 	bool is_mesh_in_frustum(const std::string& name, const BoundingBox& box, const mat4& WORLD_FROM_LOCAL);
-
+	bool sat_intersect(const std::array<vec4, 8>& box_corners, const std::array<vec4, 8>& frustum_corners, const vec4 &axis);
 	// draw the frustum lines
 	void draw_frustum();
+
+	// driver channel values
+	struct DriverChannelValues {
+		S72::vec3 translation = S72::vec3{ .x = 0.0f, .y = 0.0f, .z = 0.0f };
+		S72::vec3 scale = S72::vec3{ .x = 1.0f, .y = 1.0f, .z = 1.0f };
+		S72::quat rotation = S72::quat{ .x = 0.0f, .y = 0.0f, .z = 0.0f, .w = 1.0f };
+	};
+
+	void update_driver_channels(float dt);
+	std::pair<uint32_t, uint32_t> find_time_interval(const std::vector<float>& times, float t);
+	vec4 interpolate(const vec4& start, const vec4& end, float t, S72::Driver::Interpolation interpolation);
+
+	float playback_rate = 1.0f;
+
+	struct DriverTranslationValue {
+		S72::vec3 translation;
+	};
+	struct DriverScaleValue {
+		S72::vec3 scale;
+	};
+	struct DriverRotationValue {
+		S72::quat rotation;
+	};
+	std::unordered_map <std::string, std::variant<DriverTranslationValue, DriverScaleValue, DriverRotationValue>> driver_channel_values;
+
+	
 	//--------------------------------------------------------------------
 	//Rendering function, uses all the resources above to queue work to draw a frame:
 

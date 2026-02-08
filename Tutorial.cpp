@@ -5,6 +5,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.hpp"
 
+
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -591,54 +593,52 @@ void Tutorial::destroy_framebuffers() {
 
 
 bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& box, const mat4& WORLD_FROM_LOCAL)
-{
-	float z_near;
-	float z_far;
+{	
 
-	float y_near;
-	float x_near;
+	float near_y, near_x, far_y, far_x;
+	float near_z, far_z;
 
-	if (camera_mode == CameraMode::Scene) {
-		z_near = scene_camera.near;
-		z_far = scene_camera.far;
-		y_near = std::tan(scene_camera.fov / 2.0f) * z_near;
-		x_near = y_near * scene_camera.aspect;
-	}
-	else if (camera_mode == CameraMode::Free) {
-		z_near = free_camera.near;
-		z_far = free_camera.far;
+	if (camera_mode == CameraMode::Scene || (camera_mode == CameraMode::Debug && previous_camera_mode == CameraMode::Scene)) {
+		
+		near_y = std::tan(scene_camera.fov / 2.0f) * scene_camera.near;
+		near_x = near_y * scene_camera.aspect;
 
-		y_near = std::tan(free_camera.fov / 2.0f) * z_near;
-		x_near = y_near * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height;
+		far_y = std::tan(scene_camera.fov / 2.0f) * scene_camera.far;
+		far_x = far_y * scene_camera.aspect;
+
+		near_z = scene_camera.near;
+		far_z = scene_camera.far;
+
 	}
-	else if (camera_mode == CameraMode::Debug) {
-		if (previous_camera_mode == CameraMode::Scene) {
-			z_near = scene_camera.near;
-			z_far = scene_camera.far;
-			y_near = std::tan(scene_camera.fov / 2.0f) * z_near;
-			x_near = y_near * scene_camera.aspect;
-		}
-		else if (previous_camera_mode == CameraMode::Free) {
-			z_near = free_camera.near;
-			z_far = free_camera.far;
-			y_near = std::tan(free_camera.fov / 2.0f) * z_near;
-			x_near = y_near * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height;
-		}
-		else {
-			assert(false && "invalid previous camera mode");
-		}
-	}
+	else if (camera_mode == CameraMode::Free || (camera_mode == CameraMode::Debug && previous_camera_mode == CameraMode::Free)) {
+		
+		near_y = std::tan(free_camera.fov / 2.0f) * free_camera.near - 0.01f;
+		near_x = near_y * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height - 0.01f;
+
+		far_y = std::tan(free_camera.fov / 2.0f) * free_camera.far - 0.01f;
+		far_x = far_y * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height - 0.01f;
+
+		near_z = free_camera.near;
+		far_z = free_camera.far;
+
+	}			
 	else {
 		assert(false && "invalid camera mode");		
 	}
-	
-	vec4 corners[4] = {
+	if (name == "Green-Carton") {
+		int a = 1;
+	}
+	std::array<vec4, 8> corners{
 		vec4{ box.min_x, box.min_y, box.min_z, 1.0f },
 		vec4{ box.max_x, box.min_y, box.min_z, 1.0f },
 		vec4{ box.min_x, box.max_y, box.min_z, 1.0f },
-		vec4{ box.min_x, box.min_y, box.max_z, 1.0f }
+		vec4{ box.max_x, box.max_y, box.min_z, 1.0f },
+		vec4{ box.min_x, box.min_y, box.max_z, 1.0f },
+		vec4{ box.max_x, box.min_y, box.max_z, 1.0f },
+		vec4{ box.min_x, box.max_y, box.max_z, 1.0f },
+		vec4{ box.max_x, box.max_y, box.max_z, 1.0f },
 	};
-
+	
 	mat4 view_from_world;
 	if (previous_camera_mode == CameraMode::Scene) {
 		view_from_world = look_at(
@@ -651,100 +651,97 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 		view_from_world = orbit(free_camera.target_x, free_camera.target_y, free_camera.target_z, free_camera.azimuth, free_camera.elevation, free_camera.radius);
 	}
 
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < corners.size(); i++) {
 		corners[i] = view_from_world * WORLD_FROM_LOCAL * corners[i];
 	}
 
-	vec4 axes1 = corners[1] - corners[0];
-	vec4 axes2 = corners[2] - corners[0];
-	vec4 axes3 = corners[3] - corners[0];
+	float near_top_left_x =  -near_x;
+	float near_top_left_y = near_y;
+	float near_top_left_z = -near_z;
 
-	vec4 center = corners[0] + (axes1 + axes2 + axes3) / 2.0f;
-	float x_extent = std::sqrt(axes1[0] * axes1[0] + axes1[1] * axes1[1] + axes1[2] * axes1[2]);
-	float y_extent = std::sqrt(axes2[0] * axes2[0] + axes2[1] * axes2[1] + axes2[2] * axes2[2]);
-	float z_extent = std::sqrt(axes3[0] * axes3[0] + axes3[1] * axes3[1] + axes3[2] * axes3[2]);
+	float near_top_right_x = near_x;
+	float near_top_right_y = near_y;
+	float near_top_right_z = -near_z;
 
-	axes1 = axes1 / x_extent;
-	axes2 = axes2 / y_extent;
-	axes3 = axes3 / z_extent;
+	float near_bottom_left_x = near_x;
+	float near_bottom_left_y = near_y;
+	float near_bottom_left_z = -near_z;
 
-	x_extent /= 2.0f;
-	y_extent /= 2.0f;
-	z_extent /= 2.0f;
+	float near_bottom_right_x = near_x;
+	float near_bottom_right_y = near_y;
+	float near_bottom_right_z = -near_z;
 
-	{
-		/*float M_x = 0;
-		float M_y = 0;
-		float M_z = 1.0f;*/
+	float far_top_left_x = -far_x;
+	float far_top_left_y = far_y;
+	float far_top_left_z = -far_z;
 
-		//float MoX = 0.0f;
-		//float MoY = 0.0f;
-		//float MoZ = 1.0f;
+	float far_top_right_x = far_x;
+	float far_top_right_y = far_y;
+	float far_top_right_z = -far_z;
 
-		float MoC = center[2];
+	float far_bottom_left_x = -far_x;
+	float far_bottom_left_y = -far_y;
+	float far_bottom_left_z = -far_z;
 
-		float radius = 0.0f;
-		radius += std::fabsf(axes1[2]) * x_extent;
-		radius += std::fabsf(axes2[2]) * y_extent;
-		radius += std::fabsf(axes3[2]) * z_extent;
+	float far_bottom_right_x = far_x;
+	float far_bottom_right_y = -far_y;
+	float far_bottom_right_z = -far_z;
+
+
+	std::array<vec4, 8> frustum_corners{		
+		vec4{ near_top_left_x,     near_top_left_y,     near_top_left_z,     1.0f },
+		vec4{ near_top_right_x,    near_top_right_y,    near_top_right_z,    1.0f },
+		vec4{ near_bottom_left_x,  near_bottom_left_y,  near_bottom_left_z,  1.0f },
+		vec4{ near_bottom_right_x, near_bottom_right_y, near_bottom_right_z, 1.0f },
 		
-		float z_min = MoC - radius;
-		float z_max = MoC + radius;
-		if (z_max < -z_far || z_min > -z_near) {
-			if (name == "Room") {
-				std::cout << name << std::endl;
-				std::cout << z_min << " " << z_max << std::endl;
-			}
-			
+		vec4{ far_top_left_x,      far_top_left_y,      far_top_left_z,      1.0f },
+		vec4{ far_top_right_x,     far_top_right_y,     far_top_right_z,     1.0f },
+		vec4{ far_bottom_left_x,   far_bottom_left_y,   far_bottom_left_z,   1.0f },
+		vec4{ far_bottom_right_x,  far_bottom_right_y,  far_bottom_right_z,  1.0f }
+	};
+
+	std::array<vec4, 5> axes{
+		vec4{ 0, 0, 1, 0 },
+		vec4{ near_z, 0, -near_x },
+		vec4{ -near_z, 0, -near_x },
+		vec4{ 0, -near_z, -near_y },
+		vec4{ 0, -near_z, -near_y },
+	};
+
+	for (const auto& axis : axes) {
+		if (name == "Green-Carton") {
+			int a = 1;
+		}
+		if (!sat_intersect(corners, frustum_corners, axis)) {
 			return false;
 		}
 	}
 
-	{
-		const vec4 M[] = {
-			 { 0.0,z_near, y_near, 0.0f },
-			{ 0.0, -z_near, y_near, 0.0f },
-			{ z_near, 0.0f, x_near, 0.0f },
-			{ -z_near, 0.0f, x_near, 0.0f },
-		};
-
-		for (size_t m = 0; m < 4; m++) {
-			float MoX = std::fabsf(M[m][0]);
-			float MoY = std::fabsf(M[m][1]);
-			float MoZ = M[m][2];
-			float MoC = M[m][0] * center[0] + M[m][1] * center[1] + M[m][2] * center[2];
-
-			float radius = 0.0f;
-			radius += std::fabsf(M[m][0] * axes1[0] + M[m][1] * axes1[1] + M[m][2] * axes1[2]) * x_extent;
-			radius += std::fabsf(M[m][0] * axes2[0] + M[m][1] * axes2[1] + M[m][2] * axes2[2]) * y_extent;
-			radius += std::fabsf(M[m][0] * axes3[0] + M[m][1] * axes3[1] + M[m][2] * axes3[2]) * z_extent;
-
-			
-			float obb_min = MoC - radius;
-			float obb_max = MoC + radius;
-
-			float p = x_near * MoX + y_near * MoY;
-
-			float tau_0 = z_near * MoZ - p;
-			float tau_1 = z_near * MoZ + p;
-
-			if (tau_0 < 0.0f) {
-				tau_0 *= z_far / z_near;
-			}
-			if (tau_1 > 0.0f) {
-				tau_1 *= z_far / z_near;
-			}
-
-			if (obb_max < -tau_1 || obb_min > -tau_0) {		
-				if (name == "Room") {
-					std::cout << name << std::endl;
-					
-				}
-				return false;
-			}
-		}
-	}
 	return true;
+}
+
+bool Tutorial::sat_intersect(const std::array<vec4, 8>& box_corners, const std::array<vec4, 8>& frustum_corners, const vec4& axis)
+{
+	float box_min = std::numeric_limits<float>::max();
+	float box_max = std::numeric_limits<float>::lowest();
+
+	float frustum_min = std::numeric_limits<float>::max();
+	float frustum_max = std::numeric_limits<float>::lowest();
+
+	for (const auto& corner : box_corners) {
+		float dot_value = dot(corner, axis);
+		box_min = std::min(box_min, dot_value);
+		box_max = std::max(box_max, dot_value);
+	}
+
+	for (const auto& corner : frustum_corners) {
+		float dot_value = dot(corner, axis);
+		frustum_min = std::min(frustum_min, dot_value);
+		frustum_max = std::max(frustum_max, dot_value);
+	}
+
+	return !(box_min > frustum_max || box_max < frustum_min);
+
 }
 
 void Tutorial::draw_frustum()
@@ -791,7 +788,7 @@ void Tutorial::draw_frustum()
 		near_z = free_camera.near;
 		far_z = free_camera.far;
 	}
-	else if (camera_mode == CameraMode::Scene) {
+	else if (previous_camera_mode == CameraMode::Scene) {
 		right_x = scene_camera.forward_y * scene_camera.up_z - scene_camera.forward_y * scene_camera.up_z;
 		right_y = scene_camera.forward_z * scene_camera.up_x - scene_camera.forward_x * scene_camera.up_z;
 		right_z = scene_camera.forward_x * scene_camera.up_y - scene_camera.forward_y * scene_camera.up_x;
@@ -966,6 +963,151 @@ void Tutorial::draw_frustum()
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
 		});	
 
+}
+
+void Tutorial::update_driver_channels(float dt)
+{
+	for (const auto& driver : rtg.scene.drivers) {
+		auto time_interval = find_time_interval(driver.times, time);
+		if (time_interval.first == time_interval.second || time_interval.second == driver.times.size()) {			
+			if (driver.channel == S72::Driver::Channel::translation) {
+				driver_channel_values[driver.node.name] =
+					DriverTranslationValue{
+						.translation = {
+							.x = driver.values[time_interval.first * 3],
+							.y = driver.values[time_interval.first * 3 + 1],
+							.z = driver.values[time_interval.first * 3 + 2]
+						}
+				};								
+			}
+			else if (driver.channel == S72::Driver::Channel::scale) {
+				driver_channel_values[driver.node.name] =
+					DriverScaleValue{
+						.scale = {
+							.x = driver.values[time_interval.first * 3],
+							.y = driver.values[time_interval.first * 3 + 1],
+							.z = driver.values[time_interval.first * 3 + 2]
+							}
+				};								
+			}
+			else if (driver.channel == S72::Driver::Channel::rotation) {
+				driver_channel_values[driver.node.name] =
+					DriverRotationValue{
+						.rotation = {
+							.x = driver.values[time_interval.first * 4],
+							.y = driver.values[time_interval.first * 4 + 1],
+							.z = driver.values[time_interval.first * 4 + 2],
+							.w = driver.values[time_interval.first * 4 + 3]
+							}
+				};
+			}
+			else {
+				assert(false && "unhandled driver channel");
+			}
+		}
+		else {
+			float start_time = driver.times[time_interval.first];
+			float end_time = driver.times[time_interval.second];
+
+			float t = (time - start_time) / (end_time - start_time);
+			if (driver.channel == S72::Driver::Channel::translation) {
+				vec4 start_value{
+					driver.values[time_interval.first * 3],
+					driver.values[time_interval.first * 3 + 1],
+					driver.values[time_interval.first * 3 + 2],
+					1.0f
+				};
+				vec4 end_value{
+					driver.values[time_interval.second * 3],
+					driver.values[time_interval.second * 3 + 1],
+					driver.values[time_interval.second * 3 + 2],
+					1.0f
+				};
+				vec4 value = interpolate(start_value, end_value, t, driver.interpolation);
+				driver_channel_values[driver.node.name] =
+					DriverTranslationValue{
+						.translation = { value[0], value[1], value[2] }
+				};				
+			}
+			else if (driver.channel == S72::Driver::Channel::scale) {
+				vec4 start_value{
+					driver.values[time_interval.first * 3],
+					driver.values[time_interval.first * 3 + 1],
+					driver.values[time_interval.first * 3 + 2],
+					1.0f
+				};
+				vec4 end_value{
+					driver.values[time_interval.second * 3],
+					driver.values[time_interval.second * 3 + 1],
+					driver.values[time_interval.second * 3 + 2],
+					1.0f
+				};
+				vec4 value = interpolate(start_value, end_value, t, driver.interpolation);
+				driver_channel_values[driver.node.name] =
+					DriverScaleValue{
+						.scale = { value[0], value[1], value[2] }
+				};				
+			}
+			else if (driver.channel == S72::Driver::Channel::rotation) {
+				vec4 start_value{
+					driver.values[time_interval.first * 4],
+					driver.values[time_interval.first * 4 + 1],
+					driver.values[time_interval.first * 4 + 2],
+					driver.values[time_interval.first * 4 + 3]
+				};
+				vec4 end_value{
+					driver.values[time_interval.second * 4],
+					driver.values[time_interval.second * 4 + 1],
+					driver.values[time_interval.second * 4 + 2],
+					driver.values[time_interval.second * 4 + 3]
+				};
+				vec4 value = interpolate(start_value, end_value, t, driver.interpolation);
+				driver_channel_values[driver.node.name] =
+					DriverRotationValue{
+						.rotation = { value[0], value[1], value[2], value[3] }
+				};
+			}
+			else {
+				assert(false && "unhandled driver channel");
+			}
+		}
+		
+	}
+}
+
+std::pair<uint32_t, uint32_t> Tutorial::find_time_interval(const std::vector<float>& times, float t)
+{
+	int end_index = std::upper_bound(times.begin(), times.end(), t) - times.begin();
+	if (end_index == 0) {
+		return { 0, 0 };
+	}	
+	else {
+		return { end_index - 1, end_index };
+	}
+}
+
+vec4 Tutorial::interpolate(const vec4& start, const vec4& end, float t, S72::Driver::Interpolation interpolation)
+{
+	if (interpolation == S72::Driver::Interpolation::LINEAR) {
+		return start + (end - start) * t;
+	}
+	else if (interpolation == S72::Driver::Interpolation::STEP) {
+		return start;
+	}
+	else if (interpolation == S72::Driver::Interpolation::SLERP) {
+		float dot_value = dot(start, end);
+		vec4 start_mod = start;
+		if (dot_value < 0.0f) {
+			start_mod = -start;
+			dot_value = -dot_value;
+		}
+
+		float theta = std::acosf(dot_value);
+		float st = sin(theta);
+		float s_0 = std::sinf((1.0f - t) * theta) / st;
+		float s_1 = std::sinf(t * theta) / st;
+		return start_mod * s_0 + end * s_1;
+	}
 }
 
 void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
@@ -1406,10 +1548,10 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 void Tutorial::update(float dt) {
 	time += dt;
-
 	
-
 	lines_vertices.clear();
+
+	update_driver_channels(dt);
 
 	{
 		load_objects();
@@ -1614,6 +1756,8 @@ std::vector<Vertex> Tutorial::load_mesh_vertices() {
 
 void Tutorial::load_objects() {
 	object_instances.clear();
+	scene_camera.ready = false;
+	delayed_culling_objects.clear();
 	for (const auto root : rtg.scene.scene.roots) {
 
 		const mat4 identity = mat4{
@@ -1626,23 +1770,55 @@ void Tutorial::load_objects() {
 
 		load_objects(root, identity, identity);
 	}
+
+	for (auto& [name, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL] : delayed_culling_objects) {
+		render_mesh(rtg.scene.meshes[name], WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
+	}
 }
 
 void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local, const mat4& world_from_local_normal) {
-	// compute parent from local
+	// compute parent from local	
 
 	float sx = root->scale.x;
 	float sy = root->scale.y;
 	float sz = root->scale.z;
-
+	
 	float rx = root->rotation.x;
 	float ry = root->rotation.y;
 	float rz = root->rotation.z;
 	float rw = root->rotation.w;
-
+	
 	float tx = root->translation.x;
 	float ty = root->translation.y;
 	float tz = root->translation.z;
+		
+	if (driver_channel_values.count(root->name)) {
+		auto& channel = driver_channel_values[root->name];
+
+		if (std::holds_alternative<DriverTranslationValue>(channel)) {
+			DriverTranslationValue value = std::get<DriverTranslationValue>(channel);
+			tx = value.translation.x;
+			ty = value.translation.y;
+			tz = value.translation.z;
+		}
+		else if (std::holds_alternative<DriverRotationValue>(channel)) {
+			DriverRotationValue value = std::get<DriverRotationValue>(channel);
+			rx = value.rotation.x;
+			ry = value.rotation.y;
+			rz = value.rotation.z;
+			rw = value.rotation.w;
+		}
+		else if (std::holds_alternative<DriverScaleValue>(channel)) {
+			DriverScaleValue value = std::get<DriverScaleValue>(channel);
+			sx = value.scale.x;
+			sy = value.scale.y;
+			sz = value.scale.z;
+		}
+		else {
+			assert(false && "unknown driver values");
+		}
+	}
+	
 
 	const mat4 parent_from_local = mat4{
 		(1 - 2 * (ry * ry + rz * rz)) * sx,	2 * (rx * ry + rw * rz) * sx,	2 * (rx * rz - rw * ry) * sx,	0.0f,
@@ -1664,7 +1840,8 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 	const mat4 WORLD_FROM_LOCAL_NORMAL = world_from_local_normal * parent_from_local_normal;
 
 	if (camera_mode == CameraMode::Scene && root->camera != nullptr) {
-		assert(root->camera->name == rtg.configuration.camera_name);
+		scene_camera.ready = true;
+		//assert(root->camera->name == rtg.configuration.camera_name);
 		if (std::holds_alternative<S72::Camera::Perspective>(root->camera->projection)) {
 			S72::Camera::Perspective perspective = std::get<S72::Camera::Perspective>(root->camera->projection);
 			scene_camera.fov = perspective.vfov;
@@ -1691,7 +1868,7 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 	if (root->light != nullptr) {
 		if (std::holds_alternative<S72::Light::Sun>(root->light->source)) {
 			S72::Light::Sun sun = std::get<S72::Light::Sun>(root->light->source);
-			assert(sun.angle == 0 || sun.angle == float(M_PI));
+			assert(sun.angle == 0 || std::abs(sun.angle - float(M_PI)) < 1e-4f);
 
 			if (sun.angle == 0) {
 				vec4 dir = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 1.0f, 0.0f };
@@ -1727,41 +1904,19 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 	}
 
 	if (root->mesh != nullptr) {
-		if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::NONE
-			|| (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM 
-				&& is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL))) {
-			uint32_t texture_index = 0;
-
-			if (root->mesh->material != nullptr) {
-				// add object instance
-				if (std::holds_alternative<S72::Material::Lambertian>(root->mesh->material->brdf)) {
-					S72::Material::Lambertian lambert = std::get<S72::Material::Lambertian>(root->mesh->material->brdf);
-					if (std::holds_alternative<S72::color>(lambert.albedo)) {
-						S72::color albedo_color = std::get<S72::color>(lambert.albedo);
-						texture_index = texture_color_to_index.at(albedo_color);
-					}
-					else if (std::holds_alternative<S72::Texture*>(lambert.albedo)) {
-						S72::Texture* albedo_texture = std::get<S72::Texture*>(lambert.albedo);
-						std::string texture_key = albedo_texture->src + ", format " + std::to_string(int(albedo_texture->type)) + ", type " + std::to_string(int(albedo_texture->format));
-						texture_index = texture_name_to_index.at(texture_key);
-					}
-				}
-				else {
-					throw std::runtime_error("Unsupported material type");
-				}
+		if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::NONE) {
+			render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);			
+		}
+		else if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
+			if (camera_mode != CameraMode::Scene) {
+				render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
 			}
-			object_instances.emplace_back(ObjectInstance{
-					.vertices = mesh_vertices.at(root->mesh->name),
-					.transform = {
-						//.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
-						.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
-						.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL_NORMAL
-					},
-					.texture = texture_index
-
-				});
-
-			
+			else if (scene_camera.ready) {
+				render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+			}
+			else {
+				delayed_culling_objects.emplace_back(root->mesh->name, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
+			}
 		}
 
 		if (camera_mode == CameraMode::Debug && rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
@@ -1886,6 +2041,39 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 	for (const auto child : root->children) {
 		load_objects(child, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
 	}
+}
+
+void Tutorial::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, const mat4& world_from_local_normal)
+{
+	uint32_t texture_index = 0;
+
+	if (mesh.material != nullptr) {
+		// add object instance
+		if (std::holds_alternative<S72::Material::Lambertian>(mesh.material->brdf)) {
+			S72::Material::Lambertian lambert = std::get<S72::Material::Lambertian>(mesh.material->brdf);
+			if (std::holds_alternative<S72::color>(lambert.albedo)) {
+				S72::color albedo_color = std::get<S72::color>(lambert.albedo);
+				texture_index = texture_color_to_index.at(albedo_color);
+			}
+			else if (std::holds_alternative<S72::Texture*>(lambert.albedo)) {
+				S72::Texture* albedo_texture = std::get<S72::Texture*>(lambert.albedo);
+				std::string texture_key = albedo_texture->src + ", format " + std::to_string(int(albedo_texture->type)) + ", type " + std::to_string(int(albedo_texture->format));
+				texture_index = texture_name_to_index.at(texture_key);
+			}
+		}
+		else {
+			throw std::runtime_error("Unsupported material type");
+		}
+	}
+	object_instances.emplace_back(ObjectInstance{
+			.vertices = mesh_vertices.at(mesh.name),
+			.transform = {
+			//.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+			.WORLD_FROM_LOCAL = world_from_local,
+			.WORLD_FROM_LOCAL_NORMAL = world_from_local_normal
+		},
+		.texture = texture_index
+		});
 }
 
 void Tutorial::load_textures() {

@@ -62,6 +62,30 @@ inline vec4 operator/(const vec4& a, const float& f) {
 	return ret;
 }
 
+inline vec4 operator-(const vec4& a) {
+	vec4 ret;
+	for (uint32_t i = 0; i < 4; ++i) {
+		ret[i] = -a[i];
+	}
+	return ret;
+}
+
+inline vec4 operator*(const vec4& a, const float& f) {
+	vec4 ret;
+	for (uint32_t i = 0; i < 4; ++i) {
+		ret[i] = a[i] * f;
+	}
+	return ret;
+}
+
+inline float dot(const vec4& a, const vec4& b) {
+	float ret = 0;
+	for (int i = 0; i < 4; i++) {
+		ret += a[i] * b[i];
+	}
+	return ret;
+}
+
 // perspective projection matrix
 // -vfov is fov in radians
 // - near maps to 0 and far maps to 1
