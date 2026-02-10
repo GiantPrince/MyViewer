@@ -216,3 +216,46 @@ inline mat4 orbit(
 		-right_dot_eye, -up_dot_eye, -out_dot_eye, 1.0f,
 	};
 }
+
+inline mat4 inverse_mat(const mat4& M) {	
+	float rx = M[0], ry = M[1], rz = M[2];
+	float ux = M[4], uy = M[5], uz = M[6];
+	float bx = M[8], by = M[9], bz = M[10];
+	
+	float sx = std::sqrt(rx * rx + ry * ry + rz * rz);
+	float sy = std::sqrt(ux * ux + uy * uy + uz * uz);
+	float sz = std::sqrt(bx * bx + by * by + bz * bz);
+	
+	if (sx == 0.0f || sy == 0.0f || sz == 0.0f) {
+		return mat4{
+			1,0,0,0,
+			0,1,0,0,
+			0,0,1,0,
+			0,0,0,1
+		};
+	}
+	
+	rx /= sx; ry /= sx; rz /= sx;
+	ux /= sy; uy /= sy; uz /= sy;
+	bx /= sz; by /= sz; bz /= sz;
+	
+	float tx = M[12];
+	float ty = M[13];
+	float tz = M[14];
+	
+	mat4 inv = {
+		// column 0
+		rx, ux, bx, 0.0f,
+		// column 1
+		ry, uy, by, 0.0f,
+		// column 2
+		rz, uz, bz, 0.0f,
+		// column 3
+		-(rx * tx + ry * ty + rz * tz),
+		-(ux * tx + uy * ty + uz * tz),
+		-(bx * tx + by * ty + bz * tz),
+		1.0f
+	};
+
+	return inv;
+}

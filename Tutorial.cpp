@@ -272,7 +272,7 @@ Tutorial::Tutorial(RTG& rtg_) : rtg(rtg_) {
 		if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
 			construct_bounding_boxes(vertices);
 		}
-				
+
 		size_t bytes = vertices.size() * sizeof(Vertex);
 		mesh_vertex_buffer = rtg.helpers.create_buffer(
 			bytes,
@@ -597,13 +597,13 @@ void Tutorial::destroy_framebuffers() {
 
 
 bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& box, const mat4& WORLD_FROM_LOCAL)
-{	
+{
 
 	float near_y = 0, near_x = 0, far_y = 0, far_x = 0;
 	float near_z = 0, far_z = 0;
 
 	if (camera_mode == CameraMode::Scene || (camera_mode == CameraMode::Debug && previous_camera_mode == CameraMode::Scene)) {
-		
+
 		near_y = std::tan(scene_camera.fov / 2.0f) * scene_camera.near;
 		near_x = near_y * scene_camera.aspect;
 
@@ -615,7 +615,7 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 
 	}
 	else if (camera_mode == CameraMode::Free || (camera_mode == CameraMode::Debug && previous_camera_mode == CameraMode::Free)) {
-		
+
 		near_y = std::tan(free_camera.fov / 2.0f) * free_camera.near - 0.01f;
 		near_x = near_y * rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height - 0.01f;
 
@@ -625,11 +625,11 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 		near_z = free_camera.near;
 		far_z = free_camera.far;
 
-	}			
-	else {
-		assert(false && "invalid camera mode");		
 	}
-	
+	else {
+		assert(false && "invalid camera mode");
+	}
+
 	std::array<vec4, 8> corners{
 		vec4{ box.min_x, box.min_y, box.min_z, 1.0f },
 		vec4{ box.max_x, box.min_y, box.min_z, 1.0f },
@@ -640,16 +640,17 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 		vec4{ box.min_x, box.max_y, box.max_z, 1.0f },
 		vec4{ box.max_x, box.max_y, box.max_z, 1.0f },
 	};
-	
+
 	mat4 view_from_world;
-	if (previous_camera_mode == CameraMode::Scene) {
+	if (camera_mode == CameraMode::Scene || (camera_mode == CameraMode::Debug && previous_camera_mode == CameraMode::Scene)) {
+
 		view_from_world = look_at(
 			scene_camera.eye_x, scene_camera.eye_y, scene_camera.eye_z,
 			scene_camera.eye_x + scene_camera.forward_x, scene_camera.eye_y + scene_camera.forward_y, scene_camera.eye_z + scene_camera.forward_z,
 			scene_camera.up_x, scene_camera.up_y, scene_camera.up_z
 		);
 	}
-	else if (previous_camera_mode == CameraMode::Free) {
+	else if (camera_mode == CameraMode::Free || (camera_mode == CameraMode::Debug && previous_camera_mode == CameraMode::Free)) {
 		view_from_world = orbit(free_camera.target_x, free_camera.target_y, free_camera.target_z, free_camera.azimuth, free_camera.elevation, free_camera.radius);
 	}
 	else {
@@ -666,7 +667,7 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 		corners[i] = view_from_world * WORLD_FROM_LOCAL * corners[i];
 	}
 
-	float near_top_left_x =  -near_x;
+	float near_top_left_x = -near_x;
 	float near_top_left_y = near_y;
 	float near_top_left_z = -near_z;
 
@@ -699,12 +700,12 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 	float far_bottom_right_z = -far_z;
 
 
-	std::array<vec4, 8> frustum_corners{		
+	std::array<vec4, 8> frustum_corners{
 		vec4{ near_top_left_x,     near_top_left_y,     near_top_left_z,     1.0f },
 		vec4{ near_top_right_x,    near_top_right_y,    near_top_right_z,    1.0f },
 		vec4{ near_bottom_left_x,  near_bottom_left_y,  near_bottom_left_z,  1.0f },
 		vec4{ near_bottom_right_x, near_bottom_right_y, near_bottom_right_z, 1.0f },
-		
+
 		vec4{ far_top_left_x,      far_top_left_y,      far_top_left_z,      1.0f },
 		vec4{ far_top_right_x,     far_top_right_y,     far_top_right_z,     1.0f },
 		vec4{ far_bottom_left_x,   far_bottom_left_y,   far_bottom_left_z,   1.0f },
@@ -732,7 +733,7 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 		vec4{ near_z, 0, -near_x, 0 },
 		vec4{ -near_z, 0, -near_x, 0 },
 		vec4{ 0, -near_z, -near_y, 0 },
-		vec4{ 0, -near_z, -near_y, 0 },	
+		vec4{ 0, -near_z, -near_y, 0 },
 		box_axes[0],
 		box_axes[1],
 		box_axes[2],
@@ -751,13 +752,13 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 		cross(box_axes[1], frustum_edges[2]),
 		cross(box_axes[1], frustum_edges[3]),
 		cross(box_axes[2], frustum_edges[0]),
-		cross(box_axes[2], frustum_edges[1]),		
-		cross(box_axes[2], frustum_edges[2]),		
-		cross(box_axes[2], frustum_edges[3]),				
+		cross(box_axes[2], frustum_edges[1]),
+		cross(box_axes[2], frustum_edges[2]),
+		cross(box_axes[2], frustum_edges[3]),
 	};
 
 	for (const auto& axis : axes) {
-		
+
 		if (!sat_intersect(corners, frustum_corners, axis)) {
 			return false;
 		}
@@ -799,7 +800,7 @@ void Tutorial::draw_frustum()
 
 	float near_y, near_x, far_y, far_x;
 	float near_z, far_z;
-	
+
 	if (previous_camera_mode == CameraMode::Free) {
 		float ca = std::cos(free_camera.azimuth);
 		float sa = std::sin(free_camera.azimuth);
@@ -871,7 +872,7 @@ void Tutorial::draw_frustum()
 	}
 
 
-	
+
 	float near_top_left_x = cam_x + (-out_x * near_z) + (up_x * near_y) - (right_x * near_x);
 	float near_top_left_y = cam_y + (-out_y * near_z) + (up_y * near_y) - (right_y * near_x);
 	float near_top_left_z = cam_z + (-out_z * near_z) + (up_z * near_y) - (right_z * near_x);
@@ -953,7 +954,7 @@ void Tutorial::draw_frustum()
 	lines_vertices.emplace_back(PosColVertex{
 		.Position = {.x = far_top_right_x, .y = far_top_right_y, .z = far_top_right_z },
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
-		});	
+		});
 	lines_vertices.emplace_back(PosColVertex{
 		.Position = {.x = near_bottom_right_x, .y = near_bottom_right_y, .z = near_bottom_right_z },
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
@@ -961,7 +962,7 @@ void Tutorial::draw_frustum()
 	lines_vertices.emplace_back(PosColVertex{
 		.Position = {.x = far_bottom_right_x, .y = far_bottom_right_y, .z = far_bottom_right_z },
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
-		});	
+		});
 	lines_vertices.emplace_back(PosColVertex{
 		.Position = {.x = near_bottom_left_x, .y = near_bottom_left_y, .z = near_bottom_left_z },
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
@@ -972,7 +973,7 @@ void Tutorial::draw_frustum()
 		});
 
 	// ================= Far plane =================
-	
+
 	lines_vertices.emplace_back(PosColVertex{
 		.Position = {.x = far_top_left_x, .y = far_top_left_y, .z = far_top_left_z },
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
@@ -981,7 +982,7 @@ void Tutorial::draw_frustum()
 		.Position = {.x = far_top_right_x, .y = far_top_right_y, .z = far_top_right_z },
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
 		});
-	
+
 	lines_vertices.emplace_back(PosColVertex{
 		.Position = {.x = far_top_right_x, .y = far_top_right_y, .z = far_top_right_z },
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
@@ -990,7 +991,7 @@ void Tutorial::draw_frustum()
 		.Position = {.x = far_bottom_right_x, .y = far_bottom_right_y, .z = far_bottom_right_z },
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
 		});
-	
+
 	lines_vertices.emplace_back(PosColVertex{
 		.Position = {.x = far_bottom_right_x, .y = far_bottom_right_y, .z = far_bottom_right_z },
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
@@ -999,7 +1000,7 @@ void Tutorial::draw_frustum()
 		.Position = {.x = far_bottom_left_x, .y = far_bottom_left_y, .z = far_bottom_left_z },
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
 		});
-	
+
 	lines_vertices.emplace_back(PosColVertex{
 		.Position = {.x = far_bottom_left_x, .y = far_bottom_left_y, .z = far_bottom_left_z },
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
@@ -1007,45 +1008,45 @@ void Tutorial::draw_frustum()
 	lines_vertices.emplace_back(PosColVertex{
 		.Position = {.x = far_top_left_x, .y = far_top_left_y, .z = far_top_left_z },
 		.Color = {0.0f, 0.0f, 1.0f, 1.0f}
-		});	
+		});
 
 }
 
 void Tutorial::update_driver_channels(float dt)
 {
+	if (time > 15.0f) {
+		time = 0.0f;
+	}
 	for (const auto& driver : rtg.scene.drivers) {
 		auto time_interval = find_time_interval(driver.times, time);
-		if (time_interval.first == time_interval.second || time_interval.second == driver.times.size()) {			
+		if (time_interval.first == time_interval.second || time_interval.second == driver.times.size()) {
 			if (driver.channel == S72::Driver::Channel::translation) {
-				driver_channel_values[driver.node.name] =
-					DriverTranslationValue{
-						.translation = {
-							.x = driver.values[time_interval.first * 3],
-							.y = driver.values[time_interval.first * 3 + 1],
-							.z = driver.values[time_interval.first * 3 + 2]
-						}
-				};								
+				driver_channel_values[driver.node.name].translation =
+				{
+						.x = driver.values[time_interval.first * 3],
+						.y = driver.values[time_interval.first * 3 + 1],
+						.z = driver.values[time_interval.first * 3 + 2]
+				};
+				driver_channel_values[driver.node.name].type |= DriverChannelType::Translation;
 			}
 			else if (driver.channel == S72::Driver::Channel::scale) {
-				driver_channel_values[driver.node.name] =
-					DriverScaleValue{
-						.scale = {
-							.x = driver.values[time_interval.first * 3],
-							.y = driver.values[time_interval.first * 3 + 1],
-							.z = driver.values[time_interval.first * 3 + 2]
-							}
-				};								
+				driver_channel_values[driver.node.name].scale =
+				{
+					   .x = driver.values[time_interval.first * 3],
+					   .y = driver.values[time_interval.first * 3 + 1],
+					   .z = driver.values[time_interval.first * 3 + 2]
+				};
+				driver_channel_values[driver.node.name].type |= DriverChannelType::Scale;
 			}
 			else if (driver.channel == S72::Driver::Channel::rotation) {
-				driver_channel_values[driver.node.name] =
-					DriverRotationValue{
-						.rotation = {
-							.x = driver.values[time_interval.first * 4],
-							.y = driver.values[time_interval.first * 4 + 1],
-							.z = driver.values[time_interval.first * 4 + 2],
-							.w = driver.values[time_interval.first * 4 + 3]
-							}
+				driver_channel_values[driver.node.name].rotation =
+				{
+					   .x = driver.values[time_interval.first * 4],
+					   .y = driver.values[time_interval.first * 4 + 1],
+					   .z = driver.values[time_interval.first * 4 + 2],
+					   .w = driver.values[time_interval.first * 4 + 3]
 				};
+				driver_channel_values[driver.node.name].type |= DriverChannelType::Rotation;
 			}
 			else {
 				assert(false && "unhandled driver channel");
@@ -1070,10 +1071,9 @@ void Tutorial::update_driver_channels(float dt)
 					1.0f
 				};
 				vec4 value = interpolate(start_value, end_value, t, driver.interpolation);
-				driver_channel_values[driver.node.name] =
-					DriverTranslationValue{
-						.translation = { value[0], value[1], value[2] }
-				};				
+				driver_channel_values[driver.node.name].translation =
+				{ value[0], value[1], value[2] };
+				driver_channel_values[driver.node.name].type |= DriverChannelType::Translation;
 			}
 			else if (driver.channel == S72::Driver::Channel::scale) {
 				vec4 start_value{
@@ -1089,10 +1089,9 @@ void Tutorial::update_driver_channels(float dt)
 					1.0f
 				};
 				vec4 value = interpolate(start_value, end_value, t, driver.interpolation);
-				driver_channel_values[driver.node.name] =
-					DriverScaleValue{
-						.scale = { value[0], value[1], value[2] }
-				};				
+				driver_channel_values[driver.node.name].scale =
+				{ value[0], value[1], value[2] };
+				driver_channel_values[driver.node.name].type |= DriverChannelType::Scale;
 			}
 			else if (driver.channel == S72::Driver::Channel::rotation) {
 				vec4 start_value{
@@ -1108,16 +1107,15 @@ void Tutorial::update_driver_channels(float dt)
 					driver.values[time_interval.second * 4 + 3]
 				};
 				vec4 value = interpolate(start_value, end_value, t, driver.interpolation);
-				driver_channel_values[driver.node.name] =
-					DriverRotationValue{
-						.rotation = { value[0], value[1], value[2], value[3] }
-				};
+				driver_channel_values[driver.node.name].rotation =
+				{ value[0], value[1], value[2], value[3] };
+				driver_channel_values[driver.node.name].type |= DriverChannelType::Rotation;
 			}
 			else {
 				assert(false && "unhandled driver channel");
 			}
 		}
-		
+
 	}
 }
 
@@ -1126,7 +1124,7 @@ std::pair<uint32_t, uint32_t> Tutorial::find_time_interval(const std::vector<flo
 	uint32_t end_index = static_cast<uint32_t>(std::upper_bound(times.begin(), times.end(), t) - times.begin());
 	if (end_index == 0) {
 		return { 0, 0 };
-	}	
+	}
 	else {
 		return { end_index - 1, end_index };
 	}
@@ -1178,12 +1176,12 @@ S72::color Tutorial::srgb_to_linear(const S72::color& c)
 		else {
 			return std::pow((channel + 0.055f) / 1.055f, 2.4f);
 		}*/
-	};
+		};
 
 	return S72::color{
 		srgb_to_linear_channel(c.r),
 		srgb_to_linear_channel(c.g),
-		srgb_to_linear_channel(c.b),		
+		srgb_to_linear_channel(c.b),
 	};
 }
 
@@ -1372,7 +1370,7 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 		{
 			assert(workspace.Transforms_src.allocation.mapped);
 			ObjectsPipeline::Transform* out = reinterpret_cast<ObjectsPipeline::Transform*>(workspace.Transforms_src.allocation.data());
-			for (ObjectInstance & inst : object_instances) {
+			for (ObjectInstance& inst : object_instances) {
 				inst.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * inst.transform.WORLD_FROM_LOCAL;
 				*out = inst.transform;
 				++out;
@@ -1459,7 +1457,7 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 				float y_scale = 1.0f;
 
 				float image_aspect = rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height;
-				
+
 				if (image_aspect > scene_camera.aspect) {
 					x_scale = scene_camera.aspect / image_aspect;
 				}
@@ -1490,7 +1488,7 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 				vkCmdSetViewport(workspace.command_buffer, 0, 1, &viewport);
 			}
 
-			
+
 		}
 
 		{
@@ -1628,7 +1626,7 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 void Tutorial::update(float dt) {
 	time += dt;
-	
+
 	lines_vertices.clear();
 
 	update_driver_channels(dt);
@@ -1638,17 +1636,19 @@ void Tutorial::update(float dt) {
 	}
 
 	if (camera_mode == CameraMode::Scene)
-	{		
+	{
 		CLIP_FROM_WORLD = perspective(
 			scene_camera.fov,
 			scene_camera.aspect,
 			scene_camera.near,
 			scene_camera.far
-		) * look_at(
+		) *
+			scene_camera.inverse;
+		/*look_at(
 			scene_camera.eye_x, scene_camera.eye_y, scene_camera.eye_z,
 			scene_camera.eye_x + scene_camera.forward_x, scene_camera.eye_y + scene_camera.forward_y, scene_camera.eye_z + scene_camera.forward_z,
 			scene_camera.up_x, scene_camera.up_y, scene_camera.up_z
-		);
+		);*/
 	}
 	else if (camera_mode == CameraMode::Free) {
 		CLIP_FROM_WORLD = perspective(
@@ -1678,11 +1678,11 @@ void Tutorial::update(float dt) {
 	}
 	else {
 		assert(false && "invalid camera mode");
-	}			
+	}
 }
 
 
-void Tutorial::on_input(InputEvent const& evt) {	
+void Tutorial::on_input(InputEvent const& evt) {
 	if (action) {
 		action(evt);
 		return;
@@ -1700,8 +1700,8 @@ void Tutorial::on_input(InputEvent const& evt) {
 	}
 
 	// free camera control
-	OrbitCamera &camera = (camera_mode == CameraMode::Free ? free_camera : debug_camera);
-	
+	OrbitCamera& camera = (camera_mode == CameraMode::Free ? free_camera : debug_camera);
+
 	if (evt.type == InputEvent::MouseWheel) {
 		camera.radius *= std::exp(std::log(1.1f) * -evt.wheel.y);
 		camera.radius = std::min(camera.radius, 2.0f * camera.far);
@@ -1778,7 +1778,7 @@ void Tutorial::on_input(InputEvent const& evt) {
 			};
 		return;
 	}
-	
+
 }
 
 std::vector<Vertex> Tutorial::load_mesh_vertices() {
@@ -1861,7 +1861,7 @@ void Tutorial::load_objects() {
 		else {
 			render_mesh(rtg.scene.meshes[name], WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
 		}
-		
+
 	}
 }
 
@@ -1871,43 +1871,40 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 	float sx = root->scale.x;
 	float sy = root->scale.y;
 	float sz = root->scale.z;
-	
+
 	float rx = root->rotation.x;
 	float ry = root->rotation.y;
 	float rz = root->rotation.z;
 	float rw = root->rotation.w;
-	
+
 	float tx = root->translation.x;
 	float ty = root->translation.y;
 	float tz = root->translation.z;
-		
+
 	if (driver_channel_values.count(root->name)) {
 		auto& channel = driver_channel_values[root->name];
 
-		if (std::holds_alternative<DriverTranslationValue>(channel)) {
-			DriverTranslationValue value = std::get<DriverTranslationValue>(channel);
-			tx = value.translation.x;
-			ty = value.translation.y;
-			tz = value.translation.z;
+		if (channel.type & DriverChannelType::Translation) {			
+			tx = channel.translation.x;
+			ty = channel.translation.y;
+			tz = channel.translation.z;
 		}
-		else if (std::holds_alternative<DriverRotationValue>(channel)) {
-			DriverRotationValue value = std::get<DriverRotationValue>(channel);
-			rx = value.rotation.x;
-			ry = value.rotation.y;
-			rz = value.rotation.z;
-			rw = value.rotation.w;
+		if (channel.type & DriverChannelType::Rotation) {
+			
+			rx = channel.rotation.x;
+			ry = channel.rotation.y;
+			rz = channel.rotation.z;
+			rw = channel.rotation.w;
 		}
-		else if (std::holds_alternative<DriverScaleValue>(channel)) {
-			DriverScaleValue value = std::get<DriverScaleValue>(channel);
-			sx = value.scale.x;
-			sy = value.scale.y;
-			sz = value.scale.z;
+		if (channel.type & DriverChannelType::Scale) {
+			
+			sx = channel.scale.x;
+			sy = channel.scale.y;
+			sz = channel.scale.z;
 		}
-		else {
-			assert(false && "unknown driver values");
-		}
+		
 	}
-	
+
 
 	const mat4 parent_from_local = mat4{
 		(1 - 2 * (ry * ry + rz * rz)) * sx,	2 * (rx * ry + rw * rz) * sx,	2 * (rx * rz - rw * ry) * sx,	0.0f,
@@ -1928,7 +1925,11 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 	const mat4 WORLD_FROM_LOCAL = world_from_local * parent_from_local;
 	const mat4 WORLD_FROM_LOCAL_NORMAL = world_from_local_normal * parent_from_local_normal;
 
-	if (camera_mode == CameraMode::Scene && root->camera != nullptr) {
+	if ((camera_mode == CameraMode::Scene || previous_camera_mode == CameraMode::Scene) && root->camera != nullptr) {
+		if (rtg.configuration.camera_name != "" && root->camera->name != rtg.configuration.camera_name) {
+			// skip this camera, not the one we want
+			return;
+		}
 		scene_camera.ready = true;
 		//assert(root->camera->name == rtg.configuration.camera_name);
 		if (std::holds_alternative<S72::Camera::Perspective>(root->camera->projection)) {
@@ -1938,17 +1939,27 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 			scene_camera.far = perspective.far;
 			scene_camera.aspect = perspective.aspect;
 		}
+
+		scene_camera.inverse = inverse_mat(WORLD_FROM_LOCAL);
 		vec4 cam_pos = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 0.0f, 1.0f };
 		scene_camera.eye_x = cam_pos[0];
 		scene_camera.eye_y = cam_pos[1];
 		scene_camera.eye_z = cam_pos[2];
 
+
+
 		vec4 forward = WORLD_FROM_LOCAL_NORMAL * vec4{ 0.0f, 0.0f, -1.0f, 0.0f };
+		float len = std::sqrt(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]);
+		forward = forward / len;
 		scene_camera.forward_x = forward[0];
 		scene_camera.forward_y = forward[1];
 		scene_camera.forward_z = forward[2];
 
 		vec4 up = WORLD_FROM_LOCAL_NORMAL * vec4{ 0.0f, 1.0f, 0.0f, 0.0f };
+		float up_len = std::sqrt(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+
+		up = up / up_len;
+
 		scene_camera.up_x = up[0];
 		scene_camera.up_y = up[1];
 		scene_camera.up_z = up[2];
@@ -1994,13 +2005,13 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 
 	if (root->mesh != nullptr) {
 		if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::NONE) {
-			render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);			
+			render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
 		}
 		else if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
 			if (camera_mode != CameraMode::Scene) {
 				if (is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL)) {
 					render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
-				}				
+				}
 			}
 			else if (scene_camera.ready) {
 				if (is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL)) {
@@ -2013,7 +2024,7 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 		}
 
 		if (camera_mode == CameraMode::Debug && rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
-			
+
 			const auto& bounding_box = mesh_bounding_boxes[root->mesh->name];
 			vec4 corners[] = {
 				vec4{ bounding_box.min_x, bounding_box.min_y, bounding_box.min_z, 1.0f },
@@ -2125,9 +2136,9 @@ void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local,
 			lines_vertices.emplace_back(PosColVertex{
 				.Position = {.x = corners[3][0], .y = corners[3][1], .z = corners[3][2] },
 				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});						
+				});
 		}
-		
+
 	}
 
 	// recurse to children
@@ -2181,7 +2192,7 @@ void Tutorial::load_textures() {
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		Helpers::Unmapped
 	));
-	
+
 	rtg.helpers.transfer_to_image(&default_material_albedo, 12, textures.back());
 
 	for (const auto& [name, texture] : rtg.scene.textures) {
@@ -2192,18 +2203,33 @@ void Tutorial::load_textures() {
 			throw std::runtime_error("Failed to load texture image: " + texture.path);
 		}
 
-		assert(tex_channels == 3);
+		//assert(tex_channels == 3);
 		VkFormat format = VK_FORMAT_UNDEFINED;
-
-		if (texture.format == S72::Texture::Format::linear) {
-			format = VK_FORMAT_R8G8B8_UNORM;
-		}
-		else if (texture.format == S72::Texture::Format::srgb) {
-			format = VK_FORMAT_R8G8B8_SRGB;
+		if (tex_channels == 3) {
+			if (texture.format == S72::Texture::Format::linear) {
+				format = VK_FORMAT_R8G8B8_UNORM;
+			}
+			else if (texture.format == S72::Texture::Format::srgb) {
+				format = VK_FORMAT_R8G8B8_SRGB;
+			}
+			else {
+				throw std::runtime_error("Unsupported texture format");
+			}
 		}
 		else {
-			throw std::runtime_error("Unsupported texture format");
+			if (texture.format == S72::Texture::Format::linear) {
+				format = VK_FORMAT_R8G8B8A8_UNORM;
+			}
+			else if (texture.format == S72::Texture::Format::srgb) {
+				format = VK_FORMAT_R8G8B8A8_SRGB;
+			}
+			else {
+				throw std::runtime_error("Unsupported texture format");
+			}
 		}
+
+
+
 		texture_name_to_index[name] = static_cast<uint32_t>(textures.size());
 
 		textures.emplace_back(rtg.helpers.create_image(
@@ -2225,8 +2251,8 @@ void Tutorial::load_textures() {
 			S72::Material::Lambertian lambert =
 				std::get<S72::Material::Lambertian>(material.brdf);
 			if (std::holds_alternative<S72::color>(lambert.albedo)) {
-				S72::color albedo_color = std::get<S72::color>(lambert.albedo);	
-				
+				S72::color albedo_color = std::get<S72::color>(lambert.albedo);
+
 				if (texture_color_to_index.count(albedo_color) == 0) {
 					textures.emplace_back(rtg.helpers.create_image(
 						VkExtent2D{ .width = 1, .height = 1 },
@@ -2236,14 +2262,14 @@ void Tutorial::load_textures() {
 						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 						Helpers::Unmapped
 					));
-					
+
 					rtg.helpers.transfer_to_image(&albedo_color, 12, textures.back());
 					texture_color_to_index[albedo_color] = static_cast<uint32_t>(textures.size() - 1);
 				}
 
 			}
 			else if (std::holds_alternative<S72::Texture*>(lambert.albedo)) {
-				
+
 			}
 			else {
 				throw std::runtime_error("Unsupported material type");

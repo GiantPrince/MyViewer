@@ -199,8 +199,9 @@ struct Tutorial : RTG::Application {
 
 	enum class CameraMode {
 		Scene = 0,		
-		Free = 1,
-		Debug = 2,
+		
+		Debug,
+		Free,
 		
 	} camera_mode = CameraMode::Scene;
 
@@ -227,6 +228,7 @@ struct Tutorial : RTG::Application {
 		float far = 10.0f;
 		float aspect = 1.0f;
 		bool ready = false;
+		mat4 inverse;
 	} scene_camera;
 
 	std::vector<std::tuple<std::string, mat4, mat4>> delayed_culling_objects;
@@ -303,7 +305,21 @@ struct Tutorial : RTG::Application {
 	struct DriverRotationValue {
 		S72::quat rotation;
 	};
-	std::unordered_map <std::string, std::variant<DriverTranslationValue, DriverScaleValue, DriverRotationValue>> driver_channel_values;
+
+	class DriverChannelType {
+	public:
+		const static uint8_t Translation = 1;
+		const static uint8_t Scale = 2;
+		const static uint8_t Rotation = 4;
+	};
+
+	struct DriverValue {
+		uint8_t type;
+		S72::vec3 translation;
+		S72::vec3 scale;
+		S72::quat rotation;
+	};
+	std::unordered_map <std::string, DriverValue> driver_channel_values;
 
 	S72::color srgb_to_linear(const S72::color& c);
 	//--------------------------------------------------------------------
