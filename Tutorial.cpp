@@ -1690,8 +1690,22 @@ void Tutorial::on_input(InputEvent const& evt) {
 
 	// general
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_TAB) {
-		previous_camera_mode = camera_mode;
-		camera_mode = CameraMode((int(camera_mode) + 1) % 3);
+		if (camera_mode != CameraMode::Debug) {
+			previous_camera_mode = camera_mode;
+			camera_mode = CameraMode((int(camera_mode) + 1) % 2);
+		}		
+		return;
+	}
+
+	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_D) {
+		if (camera_mode == CameraMode::Debug) {
+			camera_mode = previous_camera_mode;
+			previous_camera_mode = CameraMode::Debug;
+		}
+		else {
+			previous_camera_mode = camera_mode;
+			camera_mode = CameraMode::Debug;
+		}				
 		return;
 	}
 
