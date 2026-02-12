@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstring>
 #include <iostream>
+#include <stack>
 
 
 Tutorial::Tutorial(RTG& rtg_) : rtg(rtg_) {
@@ -1879,286 +1880,298 @@ void Tutorial::load_objects() {
 	}
 }
 
-void Tutorial::load_objects(const S72::Node* root, const mat4& world_from_local, const mat4& world_from_local_normal) {
+void Tutorial::load_objects(const S72::Node* node_root, const mat4& node_world_from_local, const mat4& node_world_from_local_normal) {
 	// compute parent from local	
+	std::stack<std::tuple<const S72::Node*, mat4, mat4>> stack;
 
-	float sx = root->scale.x;
-	float sy = root->scale.y;
-	float sz = root->scale.z;
+	stack.push(std::make_tuple( static_cast<const S72::Node*>(node_root), node_world_from_local, node_world_from_local_normal ));
+	
+	while (!stack.empty()) {
+		auto [root, world_from_local, world_from_local_normal] = stack.top();
+		float sx = root->scale.x;
+		float sy = root->scale.y;
+		float sz = root->scale.z;
 
-	float rx = root->rotation.x;
-	float ry = root->rotation.y;
-	float rz = root->rotation.z;
-	float rw = root->rotation.w;
+		float rx = root->rotation.x;
+		float ry = root->rotation.y;
+		float rz = root->rotation.z;
+		float rw = root->rotation.w;
 
-	float tx = root->translation.x;
-	float ty = root->translation.y;
-	float tz = root->translation.z;
+		float tx = root->translation.x;
+		float ty = root->translation.y;
+		float tz = root->translation.z;
 
-	if (driver_channel_values.count(root->name)) {
-		auto& channel = driver_channel_values[root->name];
+		if (driver_channel_values.count(root->name)) {
+			auto& channel = driver_channel_values[root->name];
 
-		if (channel.type & DriverChannelType::Translation) {			
-			tx = channel.translation.x;
-			ty = channel.translation.y;
-			tz = channel.translation.z;
-		}
-		if (channel.type & DriverChannelType::Rotation) {
-			
-			rx = channel.rotation.x;
-			ry = channel.rotation.y;
-			rz = channel.rotation.z;
-			rw = channel.rotation.w;
-		}
-		if (channel.type & DriverChannelType::Scale) {
-			
-			sx = channel.scale.x;
-			sy = channel.scale.y;
-			sz = channel.scale.z;
-		}
-		
-	}
-
-
-	const mat4 parent_from_local = mat4{
-		(1 - 2 * (ry * ry + rz * rz)) * sx,	2 * (rx * ry + rw * rz) * sx,	2 * (rx * rz - rw * ry) * sx,	0.0f,
-		2 * (rx * ry - rw * rz) * sy,	(1 - 2 * (rx * rx + rz * rz)) * sy,	2 * (ry * rz + rw * rx) * sy,	0.0f,
-		2 * (rx * rz + rw * ry) * sz,	2 * (ry * rz - rw * rx) * sz,	(1 - 2 * (rx * rx + ry * ry)) * sz,	0.0f,
-		tx,	ty,	tz,	1.0f
-	};
-
-
-	const mat4 parent_from_local_normal = mat4{
-			(1 - 2 * (ry * ry + rz * rz)) / sx, 2 * (rx * ry + rw * rz) / sx, 2 * (rx * rz - rw * ry) / sx, 0.0f,
-			2 * (rx * ry - rw * rz) / sy, (1 - 2 * (rx * rx + rz * rz)) / sy, 2 * (ry * rz + rw * rx) / sy, 0.0f,
-			2 * (rx * rz + rw * ry) / sz, 2 * (ry * rz - rw * rx) / sz, (1 - 2 * (rx * rx + ry * ry)) / sz, 0.0f,
-			0.0f, 0.0f, 0.0f, 1.0f
-	};
-
-
-	const mat4 WORLD_FROM_LOCAL = world_from_local * parent_from_local;
-	const mat4 WORLD_FROM_LOCAL_NORMAL = world_from_local_normal * parent_from_local_normal;
-
-	if ((camera_mode == CameraMode::Scene || previous_camera_mode == CameraMode::Scene) && root->camera != nullptr) {
-		if (rtg.configuration.camera_name != "" && root->camera->name != rtg.configuration.camera_name) {
-			// skip this camera, not the one we want
-			return;
-		}
-		scene_camera.ready = true;
-		//assert(root->camera->name == rtg.configuration.camera_name);
-		if (std::holds_alternative<S72::Camera::Perspective>(root->camera->projection)) {
-			S72::Camera::Perspective perspective = std::get<S72::Camera::Perspective>(root->camera->projection);
-			scene_camera.fov = perspective.vfov;
-			scene_camera.near = perspective.near;
-			scene_camera.far = perspective.far;
-			scene_camera.aspect = perspective.aspect;
-		}
-
-		scene_camera.inverse = inverse_mat(WORLD_FROM_LOCAL);
-		vec4 cam_pos = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 0.0f, 1.0f };
-		scene_camera.eye_x = cam_pos[0];
-		scene_camera.eye_y = cam_pos[1];
-		scene_camera.eye_z = cam_pos[2];
-
-
-
-		vec4 forward = WORLD_FROM_LOCAL_NORMAL * vec4{ 0.0f, 0.0f, -1.0f, 0.0f };
-		float len = std::sqrt(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]);
-		forward = forward / len;
-		scene_camera.forward_x = forward[0];
-		scene_camera.forward_y = forward[1];
-		scene_camera.forward_z = forward[2];
-
-		vec4 up = WORLD_FROM_LOCAL_NORMAL * vec4{ 0.0f, 1.0f, 0.0f, 0.0f };
-		float up_len = std::sqrt(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
-
-		up = up / up_len;
-
-		scene_camera.up_x = up[0];
-		scene_camera.up_y = up[1];
-		scene_camera.up_z = up[2];
-	}
-
-	if (root->light != nullptr) {
-		if (std::holds_alternative<S72::Light::Sun>(root->light->source)) {
-			S72::Light::Sun sun = std::get<S72::Light::Sun>(root->light->source);
-			assert(sun.angle == 0 || std::abs(sun.angle - float(M_PI)) < 1e-4f);
-
-			if (sun.angle == 0) {
-				vec4 dir = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 1.0f, 0.0f };
-				float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
-				dir[0] = dir[0] / len;
-				dir[1] = dir[1] / len;
-				dir[2] = dir[2] / len;
-				world.SUN_DIRECTION.x = dir[0];
-				world.SUN_DIRECTION.y = dir[1];
-				world.SUN_DIRECTION.z = dir[2];
-
-				world.SUN_ENERGY.r = sun.strength * root->light->tint.r;
-				world.SUN_ENERGY.g = sun.strength * root->light->tint.g;
-				world.SUN_ENERGY.b = sun.strength * root->light->tint.b;
+			if (channel.type & DriverChannelType::Translation) {
+				tx = channel.translation.x;
+				ty = channel.translation.y;
+				tz = channel.translation.z;
 			}
-			else if (std::abs(sun.angle - float(M_PI)) < 1e-4f) {
-				vec4 dir = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 1.0f, 0.0f };
-				float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
-				dir[0] = dir[0] / len;
-				dir[1] = dir[1] / len;
-				dir[2] = dir[2] / len;
-				world.SKY_DIRECTION.x = dir[0];
-				world.SKY_DIRECTION.y = dir[1];
-				world.SKY_DIRECTION.z = dir[2];
-				world.SKY_ENERGY.r = sun.strength * root->light->tint.r;
-				world.SKY_ENERGY.g = sun.strength * root->light->tint.g;
-				world.SKY_ENERGY.b = sun.strength * root->light->tint.b;
-			}
-		}
-		else {
-			throw std::runtime_error("Unsupported light type");
-		}
-	}
+			if (channel.type & DriverChannelType::Rotation) {
 
-	if (root->mesh != nullptr) {
-		if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::NONE) {
-			render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+				rx = channel.rotation.x;
+				ry = channel.rotation.y;
+				rz = channel.rotation.z;
+				rw = channel.rotation.w;
+			}
+			if (channel.type & DriverChannelType::Scale) {
+
+				sx = channel.scale.x;
+				sy = channel.scale.y;
+				sz = channel.scale.z;
+			}
+
 		}
-		else if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
-			if (camera_mode != CameraMode::Scene) {
-				if (is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL)) {
-					render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+
+
+		const mat4 parent_from_local = mat4{
+			(1 - 2 * (ry * ry + rz * rz)) * sx,	2 * (rx * ry + rw * rz) * sx,	2 * (rx * rz - rw * ry) * sx,	0.0f,
+			2 * (rx * ry - rw * rz) * sy,	(1 - 2 * (rx * rx + rz * rz)) * sy,	2 * (ry * rz + rw * rx) * sy,	0.0f,
+			2 * (rx * rz + rw * ry) * sz,	2 * (ry * rz - rw * rx) * sz,	(1 - 2 * (rx * rx + ry * ry)) * sz,	0.0f,
+			tx,	ty,	tz,	1.0f
+		};
+
+
+		const mat4 parent_from_local_normal = mat4{
+				(1 - 2 * (ry * ry + rz * rz)) / sx, 2 * (rx * ry + rw * rz) / sx, 2 * (rx * rz - rw * ry) / sx, 0.0f,
+				2 * (rx * ry - rw * rz) / sy, (1 - 2 * (rx * rx + rz * rz)) / sy, 2 * (ry * rz + rw * rx) / sy, 0.0f,
+				2 * (rx * rz + rw * ry) / sz, 2 * (ry * rz - rw * rx) / sz, (1 - 2 * (rx * rx + ry * ry)) / sz, 0.0f,
+				0.0f, 0.0f, 0.0f, 1.0f
+		};
+
+
+		const mat4 WORLD_FROM_LOCAL = world_from_local * parent_from_local;
+		const mat4 WORLD_FROM_LOCAL_NORMAL = world_from_local_normal * parent_from_local_normal;
+
+		if ((camera_mode == CameraMode::Scene || previous_camera_mode == CameraMode::Scene) && root->camera != nullptr) {
+			if (rtg.configuration.camera_name != "" && root->camera->name != rtg.configuration.camera_name) {
+				// skip this camera, not the one we want
+				return;
+			}
+			scene_camera.ready = true;
+			//assert(root->camera->name == rtg.configuration.camera_name);
+			if (std::holds_alternative<S72::Camera::Perspective>(root->camera->projection)) {
+				S72::Camera::Perspective perspective = std::get<S72::Camera::Perspective>(root->camera->projection);
+				scene_camera.fov = perspective.vfov;
+				scene_camera.near = perspective.near;
+				scene_camera.far = perspective.far;
+				scene_camera.aspect = perspective.aspect;
+			}
+
+			scene_camera.inverse = inverse_mat(WORLD_FROM_LOCAL);
+			vec4 cam_pos = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 0.0f, 1.0f };
+			scene_camera.eye_x = cam_pos[0];
+			scene_camera.eye_y = cam_pos[1];
+			scene_camera.eye_z = cam_pos[2];
+
+
+
+			vec4 forward = WORLD_FROM_LOCAL_NORMAL * vec4{ 0.0f, 0.0f, -1.0f, 0.0f };
+			float len = std::sqrt(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]);
+			forward = forward / len;
+			scene_camera.forward_x = forward[0];
+			scene_camera.forward_y = forward[1];
+			scene_camera.forward_z = forward[2];
+
+			vec4 up = WORLD_FROM_LOCAL_NORMAL * vec4{ 0.0f, 1.0f, 0.0f, 0.0f };
+			float up_len = std::sqrt(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+
+			up = up / up_len;
+
+			scene_camera.up_x = up[0];
+			scene_camera.up_y = up[1];
+			scene_camera.up_z = up[2];
+		}
+
+		if (root->light != nullptr) {
+			if (std::holds_alternative<S72::Light::Sun>(root->light->source)) {
+				S72::Light::Sun sun = std::get<S72::Light::Sun>(root->light->source);
+				assert(sun.angle == 0 || std::abs(sun.angle - float(M_PI)) < 1e-4f);
+
+				if (sun.angle == 0) {
+					vec4 dir = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 1.0f, 0.0f };
+					float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+					dir[0] = dir[0] / len;
+					dir[1] = dir[1] / len;
+					dir[2] = dir[2] / len;
+					world.SUN_DIRECTION.x = dir[0];
+					world.SUN_DIRECTION.y = dir[1];
+					world.SUN_DIRECTION.z = dir[2];
+
+					world.SUN_ENERGY.r = sun.strength * root->light->tint.r;
+					world.SUN_ENERGY.g = sun.strength * root->light->tint.g;
+					world.SUN_ENERGY.b = sun.strength * root->light->tint.b;
 				}
-			}
-			else if (scene_camera.ready) {
-				if (is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL)) {
-					render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+				else if (std::abs(sun.angle - float(M_PI)) < 1e-4f) {
+					vec4 dir = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 1.0f, 0.0f };
+					float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+					dir[0] = dir[0] / len;
+					dir[1] = dir[1] / len;
+					dir[2] = dir[2] / len;
+					world.SKY_DIRECTION.x = dir[0];
+					world.SKY_DIRECTION.y = dir[1];
+					world.SKY_DIRECTION.z = dir[2];
+					world.SKY_ENERGY.r = sun.strength * root->light->tint.r;
+					world.SKY_ENERGY.g = sun.strength * root->light->tint.g;
+					world.SKY_ENERGY.b = sun.strength * root->light->tint.b;
 				}
 			}
 			else {
-				delayed_culling_objects.emplace_back(root->mesh->name, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
+				throw std::runtime_error("Unsupported light type");
 			}
 		}
 
-		if (camera_mode == CameraMode::Debug && rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
-
-			const auto& bounding_box = mesh_bounding_boxes[root->mesh->name];
-			vec4 corners[] = {
-				vec4{ bounding_box.min_x, bounding_box.min_y, bounding_box.min_z, 1.0f },
-				vec4{ bounding_box.max_x, bounding_box.min_y, bounding_box.min_z, 1.0f },
-				vec4{ bounding_box.min_x, bounding_box.max_y, bounding_box.min_z, 1.0f },
-				vec4{ bounding_box.max_x, bounding_box.max_y, bounding_box.min_z, 1.0f },
-				vec4{ bounding_box.min_x, bounding_box.min_y, bounding_box.max_z, 1.0f },
-				vec4{ bounding_box.max_x, bounding_box.min_y, bounding_box.max_z, 1.0f },
-				vec4{ bounding_box.min_x, bounding_box.max_y, bounding_box.max_z, 1.0f },
-				vec4{ bounding_box.max_x, bounding_box.max_y, bounding_box.max_z, 1.0f },
-			};
-
-			for (int i = 0; i < 8; i++) {
-				corners[i] = WORLD_FROM_LOCAL * corners[i];
+		if (root->mesh != nullptr) {
+			if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::NONE) {
+				render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+			}
+			else if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
+				if (camera_mode != CameraMode::Scene) {
+					if (is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL)) {
+						render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+					}
+				}
+				else if (scene_camera.ready) {
+					if (is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL)) {
+						render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+					}
+				}
+				else {
+					delayed_culling_objects.emplace_back(root->mesh->name, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
+				}
 			}
 
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[0][0], .y = corners[0][1], .z = corners[0][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[1][0], .y = corners[1][1], .z = corners[1][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[0][0], .y = corners[0][1], .z = corners[0][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[2][0], .y = corners[2][1], .z = corners[2][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[0][0], .y = corners[0][1], .z = corners[0][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[4][0], .y = corners[4][1], .z = corners[4][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[7][0], .y = corners[7][1], .z = corners[7][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[6][0], .y = corners[6][1], .z = corners[6][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[5][0], .y = corners[5][1], .z = corners[5][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[7][0], .y = corners[7][1], .z = corners[7][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[7][0], .y = corners[7][1], .z = corners[7][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[3][0], .y = corners[3][1], .z = corners[3][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[4][0], .y = corners[4][1], .z = corners[4][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[5][0], .y = corners[5][1], .z = corners[5][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[4][0], .y = corners[4][1], .z = corners[4][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[6][0], .y = corners[6][1], .z = corners[6][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[2][0], .y = corners[2][1], .z = corners[2][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[6][0], .y = corners[6][1], .z = corners[6][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[2][0], .y = corners[2][1], .z = corners[2][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[3][0], .y = corners[3][1], .z = corners[3][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[1][0], .y = corners[1][1], .z = corners[1][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[5][0], .y = corners[5][1], .z = corners[5][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[1][0], .y = corners[1][1], .z = corners[1][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
-			lines_vertices.emplace_back(PosColVertex{
-				.Position = {.x = corners[3][0], .y = corners[3][1], .z = corners[3][2] },
-				.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
-				});
+			if (camera_mode == CameraMode::Debug && rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
+
+				const auto& bounding_box = mesh_bounding_boxes[root->mesh->name];
+				vec4 corners[] = {
+					vec4{ bounding_box.min_x, bounding_box.min_y, bounding_box.min_z, 1.0f },
+					vec4{ bounding_box.max_x, bounding_box.min_y, bounding_box.min_z, 1.0f },
+					vec4{ bounding_box.min_x, bounding_box.max_y, bounding_box.min_z, 1.0f },
+					vec4{ bounding_box.max_x, bounding_box.max_y, bounding_box.min_z, 1.0f },
+					vec4{ bounding_box.min_x, bounding_box.min_y, bounding_box.max_z, 1.0f },
+					vec4{ bounding_box.max_x, bounding_box.min_y, bounding_box.max_z, 1.0f },
+					vec4{ bounding_box.min_x, bounding_box.max_y, bounding_box.max_z, 1.0f },
+					vec4{ bounding_box.max_x, bounding_box.max_y, bounding_box.max_z, 1.0f },
+				};
+
+				for (int i = 0; i < 8; i++) {
+					corners[i] = WORLD_FROM_LOCAL * corners[i];
+				}
+
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[0][0], .y = corners[0][1], .z = corners[0][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[1][0], .y = corners[1][1], .z = corners[1][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[0][0], .y = corners[0][1], .z = corners[0][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[2][0], .y = corners[2][1], .z = corners[2][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[0][0], .y = corners[0][1], .z = corners[0][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[4][0], .y = corners[4][1], .z = corners[4][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[7][0], .y = corners[7][1], .z = corners[7][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[6][0], .y = corners[6][1], .z = corners[6][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[5][0], .y = corners[5][1], .z = corners[5][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[7][0], .y = corners[7][1], .z = corners[7][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[7][0], .y = corners[7][1], .z = corners[7][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[3][0], .y = corners[3][1], .z = corners[3][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[4][0], .y = corners[4][1], .z = corners[4][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[5][0], .y = corners[5][1], .z = corners[5][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[4][0], .y = corners[4][1], .z = corners[4][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[6][0], .y = corners[6][1], .z = corners[6][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[2][0], .y = corners[2][1], .z = corners[2][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[6][0], .y = corners[6][1], .z = corners[6][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[2][0], .y = corners[2][1], .z = corners[2][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[3][0], .y = corners[3][1], .z = corners[3][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[1][0], .y = corners[1][1], .z = corners[1][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[5][0], .y = corners[5][1], .z = corners[5][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[1][0], .y = corners[1][1], .z = corners[1][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+				lines_vertices.emplace_back(PosColVertex{
+					.Position = {.x = corners[3][0], .y = corners[3][1], .z = corners[3][2] },
+					.Color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f }
+					});
+			}
+
 		}
+
+		stack.pop();
+
+		for (const auto child : root->children) {
+			stack.emplace(child, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
+		}
+
 
 	}
-
+	
 	// recurse to children
-	for (const auto child : root->children) {
-		load_objects(child, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
-	}
+	
 }
 
 void Tutorial::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, const mat4& world_from_local_normal)
