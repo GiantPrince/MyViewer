@@ -1,4 +1,4 @@
-#include "Tutorial.hpp"
+#include "Viewer.hpp"
 
 #include "VK.hpp"
 
@@ -17,7 +17,7 @@
 #include <stack>
 
 
-Tutorial::Tutorial(RTG& rtg_) : rtg(rtg_) {
+Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 	//refsol::Tutorial_constructor(rtg, &depth_format, &render_pass, &command_pool);
 	depth_format = rtg.helpers.find_image_format(
 		{ VK_FORMAT_D32_SFLOAT, VK_FORMAT_X8_D24_UNORM_PACK32 },
@@ -267,6 +267,7 @@ Tutorial::Tutorial(RTG& rtg_) : rtg(rtg_) {
 	}
 
 	// load meshes:
+	if (!rtg.configuration.indexed)
 	{
 		std::vector<Vertex> vertices = load_mesh_vertices();
 
@@ -286,6 +287,39 @@ Tutorial::Tutorial(RTG& rtg_) : rtg(rtg_) {
 			vertices.data(),
 			bytes,
 			mesh_vertex_buffer
+		);
+	}
+	else {
+		auto [vertices, indices] = load_mesh_vertices_indexed();
+
+		if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
+			construct_bounding_boxes(vertices);
+		}
+
+		size_t bytes = vertices.size() * sizeof(Vertex);
+		mesh_vertex_buffer = rtg.helpers.create_buffer(
+			bytes,
+			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			Helpers::Unmapped
+		);
+		size_t indices_bytes = sizeof(uint32_t) * indices.size();
+		mesh_indices_buffer = rtg.helpers.create_buffer(
+			indices_bytes,
+			VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			Helpers::Unmapped
+		);
+
+		rtg.helpers.transfer_to_buffer(
+			vertices.data(),
+			bytes,
+			mesh_vertex_buffer
+		);
+		rtg.helpers.transfer_to_buffer(
+			indices.data(),
+			indices_bytes,
+			mesh_indices_buffer
 		);
 	}
 
@@ -419,15 +453,31 @@ Tutorial::Tutorial(RTG& rtg_) : rtg(rtg_) {
 		previous_camera_mode = CameraMode::Free;
 	}
 
+	// profiling
+	if (rtg.configuration.profile) {
+		VkQueryPoolCreateInfo queryPoolInfo{
+			.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+			.queryType = VK_QUERY_TYPE_TIMESTAMP,
+			.queryCount = static_cast<uint32_t>(rtg.workspaces.size() * 2),			
+		};
+		vkCreateQueryPool(rtg.device, &queryPoolInfo, nullptr, &query_pool);
+		timestamp_period = rtg.timestamp_period;
+	}
+
 
 }
 
-Tutorial::~Tutorial() {
+Viewer::~Viewer() {
 
 	//just in case rendering is still in flight, don't destroy resources:
 	//(not using VK macro to avoid throw-ing in destructor)
 	if (VkResult result = vkDeviceWaitIdle(rtg.device); result != VK_SUCCESS) {
 		std::cerr << "Failed to vkDeviceWaitIdle in Tutorial::~Tutorial [" << string_VkResult(result) << "]; continuing anyway." << std::endl;
+	}
+
+	if (rtg.configuration.profile && query_pool != VK_NULL_HANDLE) {
+		vkDestroyQueryPool(rtg.device, query_pool, nullptr);
+		query_pool = VK_NULL_HANDLE;
 	}
 
 	if (texture_descriptor_pool) {
@@ -456,6 +506,7 @@ Tutorial::~Tutorial() {
 
 	rtg.helpers.destroy_buffer(std::move(object_vertices));
 	rtg.helpers.destroy_buffer(std::move(mesh_vertex_buffer));
+	rtg.helpers.destroy_buffer(std::move(mesh_indices_buffer));
 
 	if (swapchain_depth_image.handle != VK_NULL_HANDLE) {
 		destroy_framebuffers();
@@ -522,7 +573,7 @@ Tutorial::~Tutorial() {
 	}
 }
 
-void Tutorial::on_swapchain(RTG& rtg_, RTG::SwapchainEvent const& swapchain) {
+void Viewer::on_swapchain(RTG& rtg_, RTG::SwapchainEvent const& swapchain) {
 	//[re]create framebuffers:
 	//refsol::Tutorial_on_swapchain(rtg, swapchain, depth_format, render_pass, &swapchain_depth_image, &swapchain_depth_image_view, &swapchain_framebuffers);
 	if (swapchain_depth_image.handle != VK_NULL_HANDLE) {
@@ -579,7 +630,7 @@ void Tutorial::on_swapchain(RTG& rtg_, RTG::SwapchainEvent const& swapchain) {
 	}
 }
 
-void Tutorial::destroy_framebuffers() {
+void Viewer::destroy_framebuffers() {
 	//refsol::Tutorial_destroy_framebuffers(rtg, &swapchain_depth_image, &swapchain_depth_image_view, &swapchain_framebuffers);
 	for (VkFramebuffer& framebuffer : swapchain_framebuffers) {
 		if (framebuffer != VK_NULL_HANDLE) {
@@ -597,7 +648,7 @@ void Tutorial::destroy_framebuffers() {
 }
 
 
-bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& box, const mat4& WORLD_FROM_LOCAL)
+bool Viewer::is_mesh_in_frustum(const std::string& name, const BoundingBox& box, const mat4& WORLD_FROM_LOCAL)
 {
 
 	float near_y = 0, near_x = 0, far_y = 0, far_x = 0;
@@ -664,8 +715,11 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 		};
 	}
 
+	auto m = view_from_world * WORLD_FROM_LOCAL;
+	
+
 	for (int i = 0; i < corners.size(); i++) {
-		corners[i] = view_from_world * WORLD_FROM_LOCAL * corners[i];
+		corners[i] = m * corners[i];
 	}
 
 	float near_top_left_x = -near_x;
@@ -758,9 +812,12 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 		cross(box_axes[2], frustum_edges[3]),
 	};
 
-	for (const auto& axis : axes) {
+	for (uint32_t i = 0; i < axes.size(); i++) {
+		const auto& axis = axes[i];
+		
 
 		if (!sat_intersect(corners, frustum_corners, axis)) {
+			
 			return false;
 		}
 	}
@@ -768,7 +825,7 @@ bool Tutorial::is_mesh_in_frustum(const std::string& name, const BoundingBox& bo
 	return true;
 }
 
-bool Tutorial::sat_intersect(const std::array<vec4, 8>& box_corners, const std::array<vec4, 8>& frustum_corners, const vec4& axis)
+bool Viewer::sat_intersect(const std::array<vec4, 8>& box_corners, const std::array<vec4, 8>& frustum_corners, const vec4& axis)
 {
 	float box_min = std::numeric_limits<float>::max();
 	float box_max = std::numeric_limits<float>::lowest();
@@ -792,7 +849,7 @@ bool Tutorial::sat_intersect(const std::array<vec4, 8>& box_corners, const std::
 
 }
 
-void Tutorial::draw_frustum()
+void Viewer::draw_frustum()
 {
 	float right_x, right_y, right_z;
 	float up_x, up_y, up_z;
@@ -1013,11 +1070,9 @@ void Tutorial::draw_frustum()
 
 }
 
-void Tutorial::update_driver_channels(float dt)
+void Viewer::update_driver_channels(float dt)
 {
-	if (time > 15.0f) {
-		time = 0.0f;
-	}
+	
 	for (const auto& driver : rtg.scene.drivers) {
 		auto time_interval = find_time_interval(driver.times, time);
 		if (time_interval.first == time_interval.second || time_interval.second == driver.times.size()) {
@@ -1120,7 +1175,7 @@ void Tutorial::update_driver_channels(float dt)
 	}
 }
 
-std::pair<uint32_t, uint32_t> Tutorial::find_time_interval(const std::vector<float>& times, float t)
+std::pair<uint32_t, uint32_t> Viewer::find_time_interval(const std::vector<float>& times, float t)
 {
 	uint32_t end_index = static_cast<uint32_t>(std::upper_bound(times.begin(), times.end(), t) - times.begin());
 	if (end_index == 0) {
@@ -1131,7 +1186,7 @@ std::pair<uint32_t, uint32_t> Tutorial::find_time_interval(const std::vector<flo
 	}
 }
 
-vec4 Tutorial::interpolate(const vec4& start, const vec4& end, float t, S72::Driver::Interpolation interpolation)
+vec4 Viewer::interpolate(const vec4& start, const vec4& end, float t, S72::Driver::Interpolation interpolation)
 {
 	if (interpolation == S72::Driver::Interpolation::LINEAR) {
 		return start + (end - start) * t;
@@ -1166,7 +1221,7 @@ vec4 Tutorial::interpolate(const vec4& start, const vec4& end, float t, S72::Dri
 	}
 }
 
-S72::color Tutorial::srgb_to_linear(const S72::color& c)
+S72::color Viewer::srgb_to_linear(const S72::color& c)
 {
 	auto srgb_to_linear_channel = [](float channel) {
 		//return pow(channel, 2.2f);
@@ -1186,7 +1241,29 @@ S72::color Tutorial::srgb_to_linear(const S72::color& c)
 	};
 }
 
-void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
+double Viewer::get_query_results(uint32_t workspace_index)
+{
+	uint64_t timestamps[2];
+	auto result = vkGetQueryPoolResults(
+		rtg.device, 
+		query_pool, 
+		workspace_index * 2,
+		2,
+		sizeof(timestamps), 
+		timestamps,
+		sizeof(uint64_t),
+		VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT
+	);
+
+	assert(result != VK_NOT_READY);
+	
+	double time_ms = (timestamps[1] - timestamps[0]) * timestamp_period / 1e6;
+	return time_ms;
+	
+	
+}
+
+void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 	static std::unique_ptr<Timer> timer;
 	timer.reset(new Timer([](double d) { std::cout << "REPORT frame-time " << d * 1000.0 << "ms" << std::endl; }));
@@ -1201,7 +1278,16 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 	//record (into `workspace.command_buffer`) commands that run a `render_pass` that just clears `framebuffer`:
 	//refsol::Tutorial_render_record_blank_frame(rtg, render_pass, framebuffer, &workspace.command_buffer);
-
+	if (rtg.configuration.profile) {
+		if (workspace.ready_for_query) {
+			double gpu_time = get_query_results(render_params.workspace_index);
+			std::cout << "gpu time = " << gpu_time << "ms" << std::endl;
+		}
+		else {
+			workspace.ready_for_query = true;
+		}		
+	}
+	
 	// reset the command buffer
 	VK(vkResetCommandBuffer(workspace.command_buffer, 0));
 
@@ -1212,6 +1298,11 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
 		};
 		VK(vkBeginCommandBuffer(workspace.command_buffer, &commandBufferBeginInfo));
+	}
+
+	// if profiling reset query
+	if (rtg.configuration.profile) {
+		vkCmdResetQueryPool(workspace.command_buffer, query_pool, render_params.workspace_index * 2, 2);
 	}
 
 	if (!lines_vertices.empty()) {
@@ -1423,7 +1514,7 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 	}
 
-
+	
 
 	//render pass
 	{
@@ -1532,9 +1623,7 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
 		}
 
-		{
 
-		}
 
 		//objects
 		{
@@ -1547,6 +1636,15 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 				//Camera descriptor set is still bound(!)
 
+			}
+
+			if (rtg.configuration.indexed) {
+				vkCmdBindIndexBuffer(
+					workspace.command_buffer,
+					mesh_indices_buffer.handle,
+					0,
+					VK_INDEX_TYPE_UINT32
+				);
 			}
 
 			{
@@ -1567,6 +1665,9 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 				);
 
 			}
+			if (rtg.configuration.profile) {
+				vkCmdWriteTimestamp(workspace.command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, query_pool, render_params.workspace_index * 2);
+			}
 
 			for (ObjectInstance const& inst : object_instances) {
 				uint32_t index = uint32_t(&inst - &object_instances[0]);
@@ -1580,8 +1681,23 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 					0, nullptr
 				);
 
-
-				vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+				if (!rtg.configuration.indexed) {
+					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+				}
+				else {
+					vkCmdDrawIndexed(
+						workspace.command_buffer,
+						inst.vertices.count,   
+						1,                    
+						inst.vertices.first,   
+						0,                    
+						index                 
+					);
+				}
+				
+			}
+			if (rtg.configuration.profile) {
+				vkCmdWriteTimestamp(workspace.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, query_pool, render_params.workspace_index * 2 + 1);
 			}
 			//vkCmdDraw(workspace.command_buffer, static_cast<uint32_t>(object_vertices.size / sizeof(PosColVertex)), 1, 0, 0);
 
@@ -1590,6 +1706,8 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 		vkCmdEndRenderPass(workspace.command_buffer);
 	}
+
+	
 
 
 	VK(vkEndCommandBuffer(workspace.command_buffer));
@@ -1622,10 +1740,12 @@ void Tutorial::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 		VK(vkQueueSubmit(rtg.graphics_queue, 1, &submit_info, render_params.workspace_available));
 	}
+
+
 }
 
 
-void Tutorial::update(float dt) {
+void Viewer::update(float dt) {
 	time += dt;
 
 	lines_vertices.clear();
@@ -1633,6 +1753,7 @@ void Tutorial::update(float dt) {
 	update_driver_channels(dt);
 
 	{
+		Timer timer([](double time) { std::cout << "Time spent on scene graph traversal: " << time * 1000 << "ms" << std::endl; });
 		load_objects();
 	}
 
@@ -1683,7 +1804,7 @@ void Tutorial::update(float dt) {
 }
 
 
-void Tutorial::on_input(InputEvent const& evt) {
+void Viewer::on_input(InputEvent const& evt) {
 	if (action) {
 		action(evt);
 		return;
@@ -1709,6 +1830,11 @@ void Tutorial::on_input(InputEvent const& evt) {
 		}				
 		return;
 	}
+
+	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_R) {
+		time = 0;
+	}
+
 
 	if (camera_mode == CameraMode::Scene) {
 		return;
@@ -1796,8 +1922,82 @@ void Tutorial::on_input(InputEvent const& evt) {
 
 }
 
-std::vector<Vertex> Tutorial::load_mesh_vertices() {
+std::pair<std::vector<Vertex>, std::vector<uint32_t>> Viewer::load_mesh_vertices_indexed() {	
 	std::vector<Vertex> vertices;
+	// assume no indices data in s72
+	std::vector<uint32_t> indices;
+	std::unordered_map<Vertex, uint32_t> vertex_to_index;
+	uint32_t current_index = 0;
+
+	for (const auto& [name, mesh] : rtg.scene.meshes) {
+		
+		vertex_to_index.clear();
+		uint32_t count = mesh.count;
+		uint32_t vertex_first = static_cast<uint32_t>(vertices.size());
+		uint32_t index_first = static_cast<uint32_t>(indices.size());
+
+
+		//vertices.resize(vertices.size() + count);
+
+		uint32_t position_offset = mesh.attributes.at("POSITION").offset;
+		uint32_t normal_offset = mesh.attributes.at("NORMAL").offset;
+		uint32_t tangent_offset = mesh.attributes.at("TANGENT").offset;
+		uint32_t texcoord_offset = mesh.attributes.at("TEXCOORD").offset;
+		uint32_t stride = mesh.attributes.at("POSITION").stride;
+		const std::vector<char>& content = mesh.attributes.at("POSITION").src.content;
+
+		assert(stride == mesh.attributes.at("NORMAL").stride);
+		assert(stride == mesh.attributes.at("TANGENT").stride);
+		assert(stride == mesh.attributes.at("TEXCOORD").stride);
+
+		for (uint32_t i = 0; i < count; i++) {
+			uint32_t strides = i * stride;
+			Vertex v;
+
+			v.Position.x = *reinterpret_cast<const float*>(content.data() + position_offset + strides);
+			v.Position.y = *reinterpret_cast<const float*>(content.data() + position_offset + strides + sizeof(float));
+			v.Position.z = *reinterpret_cast<const float*>(content.data() + position_offset + strides + 2 * sizeof(float));
+
+			v.Normal.x = *reinterpret_cast<const float*>(content.data() + normal_offset + strides);
+			v.Normal.y = *reinterpret_cast<const float*>(content.data() + normal_offset + strides + sizeof(float));
+			v.Normal.z = *reinterpret_cast<const float*>(content.data() + normal_offset + strides + 2 * sizeof(float));
+
+			v.Tangent.x = *reinterpret_cast<const float*>(content.data() + tangent_offset + strides);
+			v.Tangent.y = *reinterpret_cast<const float*>(content.data() + tangent_offset + strides + sizeof(float));
+			v.Tangent.z = *reinterpret_cast<const float*>(content.data() + tangent_offset + strides + 2 * sizeof(float));
+			v.Tangent.w = *reinterpret_cast<const float*>(content.data() + tangent_offset + strides + 3 * sizeof(float));
+
+			v.TexCoord.s = *reinterpret_cast<const float*>(content.data() + texcoord_offset + strides);
+			v.TexCoord.t = *reinterpret_cast<const float*>(content.data() + texcoord_offset + strides + sizeof(float));
+
+			if (vertex_to_index.count(v)) {
+				indices.push_back(vertex_to_index[v]);
+			}
+			else {
+				vertex_to_index[v] = current_index;
+				indices.push_back(current_index);
+				vertices.push_back(v);
+				current_index++;
+			}
+		}
+
+		mesh_vertices[name] = MeshSlice{
+			.first = vertex_first,
+			.count = static_cast<uint32_t>(vertices.size()) - vertex_first
+		};
+
+		mesh_indices[name] = MeshSlice{
+			.first = index_first,
+			.count = static_cast<uint32_t>(indices.size()) - index_first
+		};
+	}
+
+	return { vertices, indices };
+}
+
+std::vector<Vertex> Viewer::load_mesh_vertices() {
+	std::vector<Vertex> vertices;
+	
 	for (const auto& [name, mesh] : rtg.scene.meshes) {
 		uint32_t count = mesh.count;
 		uint32_t first = static_cast<uint32_t>(vertices.size());
@@ -1812,11 +2012,12 @@ std::vector<Vertex> Tutorial::load_mesh_vertices() {
 		const std::vector<char>& content = mesh.attributes.at("POSITION").src.content;
 
 		assert(stride == mesh.attributes.at("NORMAL").stride);
-		assert(stride = mesh.attributes.at("TANGENT").stride);
-		assert(stride = mesh.attributes.at("TEXCOORD").stride);
+		assert(stride == mesh.attributes.at("TANGENT").stride);
+		assert(stride == mesh.attributes.at("TEXCOORD").stride);
 
 		for (uint32_t i = 0; i < count; i++) {
 			uint32_t strides = i * stride;
+			
 
 			// position
 			vertices[first + i].Position.x = *reinterpret_cast<const float*>(content.data() + position_offset + strides);
@@ -1840,7 +2041,7 @@ std::vector<Vertex> Tutorial::load_mesh_vertices() {
 
 		}
 
-		mesh_vertices[name] = MeshVertices{
+		mesh_vertices[name] = MeshSlice{
 			.first = first,
 			.count = count
 		};
@@ -1849,7 +2050,7 @@ std::vector<Vertex> Tutorial::load_mesh_vertices() {
 	return vertices;
 }
 
-void Tutorial::load_objects() {
+void Viewer::load_objects() {
 	object_instances.clear();
 	scene_camera.ready = false;
 	delayed_culling_objects.clear();
@@ -1880,7 +2081,7 @@ void Tutorial::load_objects() {
 	}
 }
 
-void Tutorial::load_objects(const S72::Node* node_root, const mat4& node_world_from_local, const mat4& node_world_from_local_normal) {
+void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_from_local, const mat4& node_world_from_local_normal) {
 	// compute parent from local	
 	std::stack<std::tuple<const S72::Node*, mat4, mat4>> stack;
 
@@ -2174,7 +2375,7 @@ void Tutorial::load_objects(const S72::Node* node_root, const mat4& node_world_f
 	
 }
 
-void Tutorial::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, const mat4& world_from_local_normal)
+void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, const mat4& world_from_local_normal)
 {
 	uint32_t texture_index = 0;
 
@@ -2196,18 +2397,33 @@ void Tutorial::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, 
 			throw std::runtime_error("Unsupported material type");
 		}
 	}
-	object_instances.emplace_back(ObjectInstance{
+
+	if (!rtg.configuration.indexed) {
+		object_instances.emplace_back(ObjectInstance{
 			.vertices = mesh_vertices.at(mesh.name),
 			.transform = {
-			//.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
-			.WORLD_FROM_LOCAL = world_from_local,
-			.WORLD_FROM_LOCAL_NORMAL = world_from_local_normal
-		},
-		.texture = texture_index
-		});
+				//.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+				.WORLD_FROM_LOCAL = world_from_local,
+				.WORLD_FROM_LOCAL_NORMAL = world_from_local_normal
+			},
+			.texture = texture_index
+			});
+	}
+	else {
+		object_instances.emplace_back(ObjectInstance{
+			.vertices = mesh_indices.at(mesh.name),
+			.transform = {
+				//.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+				.WORLD_FROM_LOCAL = world_from_local,
+				.WORLD_FROM_LOCAL_NORMAL = world_from_local_normal
+			},
+			.texture = texture_index
+			});
+	}
+	
 }
 
-void Tutorial::load_textures() {
+void Viewer::load_textures() {
 	textures.reserve(rtg.scene.textures.size());
 
 	S72::color default_material_albedo = { 0.8f, 0.8f, 0.8f };
@@ -2305,7 +2521,7 @@ void Tutorial::load_textures() {
 	}
 }
 
-void Tutorial::construct_bounding_boxes(const std::vector<Vertex>& vertices)
+void Viewer::construct_bounding_boxes(const std::vector<Vertex>& vertices)
 {
 	mesh_bounding_boxes.reserve(mesh_vertices.size());
 	for (const auto& [name, mesh_vertex] : mesh_vertices) {

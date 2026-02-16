@@ -1,7 +1,7 @@
 
 #include "RTG.hpp"
 
-#include "Tutorial.hpp"
+#include "Viewer.hpp"
 
 #include <iostream>
 
@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
 		RTG rtg(configuration);
 
 		//initializes global (whole-life-of-application) resources:
-		Tutorial application(rtg);
+		Viewer application(rtg);
 
 		//main loop -- handles events, renders frames, etc:
 		rtg.run(application);

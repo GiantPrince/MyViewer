@@ -1,4 +1,4 @@
-#include "Tutorial.hpp"
+#include "Viewer.hpp"
 
 #include "Helpers.hpp"
 
@@ -12,7 +12,7 @@ static uint32_t frag_code[]
 #include "spv/background.frag.inl"
 ;
 
-void Tutorial::BackgroundPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_t subpass) {
+void Viewer::BackgroundPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_t subpass) {
 	VkShaderModule vert_module = rtg.helpers.create_shader_module(vert_code);
 	VkShaderModule frag_module = rtg.helpers.create_shader_module(frag_code);
 
@@ -148,7 +148,7 @@ void Tutorial::BackgroundPipeline::create(RTG& rtg, VkRenderPass render_pass, ui
 	}
 }
 
-void Tutorial::BackgroundPipeline::destroy(RTG& rtg) {
+void Viewer::BackgroundPipeline::destroy(RTG& rtg) {
 	
 	if (layout != VK_NULL_HANDLE) {
 		vkDestroyPipelineLayout(rtg.device, layout, nullptr);

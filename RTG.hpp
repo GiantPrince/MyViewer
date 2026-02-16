@@ -90,6 +90,12 @@ struct RTG {
 		// camera name
 		std::string camera_name = "";
 
+		//profiling the gpu
+		bool profile = false;
+
+		//enable indexed buffer
+		bool indexed = false;
+
 		//for configuration construction + management:
 		Configuration() = default;
 		void parse(int argc, char **argv); //parse command-line options; throws on error
@@ -219,6 +225,9 @@ struct RTG {
 
 	//the scene
 	S72 scene;
+
+	//the timestamp period info
+	double timestamp_period = 0;
 	
 
 };

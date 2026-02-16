@@ -23,11 +23,11 @@ namespace std {
 	};
 }
 
-struct Tutorial : RTG::Application {
+struct Viewer : RTG::Application {
 
-	Tutorial(RTG &);
-	Tutorial(Tutorial const &) = delete; //you shouldn't be copying this object
-	~Tutorial();
+	Viewer(RTG &);
+	Viewer(Viewer const &) = delete; //you shouldn't be copying this object
+	~Viewer();
 
 	//kept for use in destructor:
 	RTG &rtg;
@@ -144,6 +144,7 @@ struct Tutorial : RTG::Application {
 		Helpers::AllocatedBuffer Transforms;
 		VkDescriptorSet Transforms_descriptors;
 
+		bool ready_for_query = false;
 	};
 	std::vector< Workspace > workspaces;
 
@@ -156,11 +157,14 @@ struct Tutorial : RTG::Application {
 	};
 
 	Helpers::AllocatedBuffer mesh_vertex_buffer;
-	struct MeshVertices {
+	Helpers::AllocatedBuffer mesh_indices_buffer;
+	struct MeshSlice {
 		uint32_t first = 0;
 		uint32_t count = 0;
 	};
-	std::unordered_map<std::string, MeshVertices> mesh_vertices;
+	std::unordered_map<std::string, MeshSlice> mesh_vertices;
+	
+	std::unordered_map<std::string, MeshSlice> mesh_indices;
 
 	ObjectVertices plane_vertices;
 	ObjectVertices torus_vertices;
@@ -214,7 +218,7 @@ struct Tutorial : RTG::Application {
 		float elevation = 0.25 * float(M_PI);
 		float fov = 60.0f * float(M_PI) / 180.0f;
 		float near = 0.1f;
-		float far = 10.0f;	
+		float far = 1000.0f;	
 	} free_camera;
 
 	//used when camera_mode == CameraMode::Scene:
@@ -249,7 +253,7 @@ struct Tutorial : RTG::Application {
 	std::vector<LinesPipeline::Vertex> lines_vertices;
 
 	struct ObjectInstance {
-		MeshVertices vertices;
+		MeshSlice vertices;
 		ObjectsPipeline::Transform transform;
 		uint32_t texture = 0;
 	};
@@ -260,6 +264,7 @@ struct Tutorial : RTG::Application {
 
 	// loading all mesh indices
 	std::vector<Vertex> load_mesh_vertices();
+	std::pair<std::vector<Vertex>, std::vector<uint32_t>> load_mesh_vertices_indexed();
 
 	// loading all objects
 	void load_objects();
@@ -294,17 +299,7 @@ struct Tutorial : RTG::Application {
 	vec4 interpolate(const vec4& start, const vec4& end, float t, S72::Driver::Interpolation interpolation);
 
 	float playback_rate = 1.0f;
-
-	struct DriverTranslationValue {
-		S72::vec3 translation;
-	};
-	struct DriverScaleValue {
-		S72::vec3 scale;
-	};
-	struct DriverRotationValue {
-		S72::quat rotation;
-	};
-
+	
 	class DriverChannelType {
 	public:
 		const static uint8_t Translation = 1;
@@ -321,6 +316,13 @@ struct Tutorial : RTG::Application {
 	std::unordered_map <std::string, DriverValue> driver_channel_values;
 
 	S72::color srgb_to_linear(const S72::color& c);
+
+	// profiling
+	VkQueryPool query_pool = VK_NULL_HANDLE;
+
+	double get_query_results(uint32_t workspace_index);
+
+	double timestamp_period = 0;
 	//--------------------------------------------------------------------
 	//Rendering function, uses all the resources above to queue work to draw a frame:
 

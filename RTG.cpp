@@ -89,6 +89,12 @@ void RTG::Configuration::parse(int argc, char** argv) {
 			argi += 1;
 			camera_name = argv[argi];
 		}
+		else if (arg == "--profile") {
+			profile = true;
+		}
+		else if (arg == "--indexed") {
+			indexed = true;
+		}
 		else {
 			throw std::runtime_error("Unrecognized argument '" + arg + "'.");
 		}
@@ -308,6 +314,8 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 		VkPhysicalDeviceProperties properties;
 		vkGetPhysicalDeviceProperties(physical_device, &properties);
 		std::cout << "Selected physical device: '" << properties.deviceName << "'." << std::endl;
+		if (configuration.profile)
+			timestamp_period = properties.limits.timestampPeriod;
 	}
 
 	//select the `surface_format` and `present_mode` which control how colors are represented on the surface and how new images are supplied to the surface:
@@ -1061,8 +1069,8 @@ void RTG::run(Application& application) {
 			workspace_index = next_workspace;
 			next_workspace = (next_workspace + 1) % workspaces.size();
 			VK(vkWaitForFences(device, 1, &workspaces[workspace_index].workspace_available, VK_TRUE, UINT64_MAX));
-
 			VK(vkResetFences(device, 1, &workspaces[workspace_index].workspace_available));
+
 		}
 
 		uint32_t image_index = -1U;
