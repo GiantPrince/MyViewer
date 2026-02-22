@@ -2542,6 +2542,8 @@ void Viewer::load_textures() {
 			std::vector<float> converted_rgba(tex_width * tex_height * 4, 0);
 			for (size_t i = 0; i < tex_width * tex_height; i ++) {
 				size_t j = 4 * i;
+				std::cout << (int)image[j] << " " << (int)image[j + 1] << " " << (int)image[j + 2] << " " << (int)image[j + 3] << std::endl;
+
 				if (image[j] == 0 && image[j + 1] == 0 && image[j + 2] == 0 && image[j + 3] == 0) {
 					continue;
 				}
