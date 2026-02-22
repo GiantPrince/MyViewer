@@ -375,7 +375,7 @@ void Helpers::transfer_to_cubemap(void const* data, size_t size, AllocatedImage&
 
 	for (uint32_t i = 0; i < 6; i++) {
 		VkBufferImageCopy region{
-			.bufferOffset = i * image.extent.width * image.extent.height * 16,
+			.bufferOffset = i * image.extent.width * image.extent.height * bytes_per_block / texels_per_block,
 			.bufferRowLength = image.extent.width,
 			.bufferImageHeight = image.extent.height,
 			.imageSubresource{

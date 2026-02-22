@@ -332,7 +332,7 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 		texture_views.reserve(textures.size());
 		for (Helpers::AllocatedImage const& image : textures) {
 			VkImageViewCreateInfo create_info{};
-			if (image.format == VK_FORMAT_R32G32B32A32_SFLOAT) {
+			if (image.format == VK_FORMAT_E5B9G9R9_UFLOAT_PACK32) {
 				create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 				create_info.flags = 0;
 				create_info.image = image.handle;
@@ -1276,26 +1276,23 @@ double Viewer::get_query_results(uint32_t workspace_index)
 	
 }
 
-uint32_t Viewer::rgbe_to_e5b9g9r9(uint32_t rgbe)
+void Viewer::rgbe_to_e5b9g9r9(unsigned char *rgbe)
 {
-	if (rgbe == 0) return 0;
-
-	// 1. Extract (Assuming standard Radiance order: R, G, B, E)
-	// If colors are still wrong, swap these shifts.
-	uint32_t e = rgbe & 0xFF;
-	uint32_t b = (rgbe >> 8) & 0xFF;
-	uint32_t g = (rgbe >> 16) & 0xFF;
-	uint32_t r = (rgbe >> 24) & 0xFF;
-
-	if (e == 0) return 0;
-
-	// 2. Convert RGBE to linear float
+	if (rgbe[0] == 0 && rgbe[1] == 0 && rgbe[2] == 0 && rgbe[3] == 0) {
+		return;
+	}
+		
+	uint32_t e = rgbe[3];
+	uint32_t b = rgbe[2];
+	uint32_t g = rgbe[1];
+	uint32_t r = rgbe[0];
+		
 	float scale = std::ldexp(1.0f, e - 128 - 8);
 	float fr = r * scale;
 	float fg = g * scale;
 	float fb = b * scale;
 
-	// 3. Find max for shared exponent
+	// Find max for shared exponent
 	float max_c = std::max(fr, std::max(fg, fb));
 
 	int shared_exp;
@@ -1304,13 +1301,22 @@ uint32_t Viewer::rgbe_to_e5b9g9r9(uint32_t rgbe)
 	// Clamp exponent to E5 range (Bias 15)
 	int biased_exp = std::max(0, std::min(31, shared_exp + 15));
 
-	// 4. Calculate 9-bit mantissas
+	// Calculate 9-bit mantissas
 	float denom = std::ldexp(1.0f, biased_exp - 15 - 9);
 	uint32_t r9 = (uint32_t)std::min(511.0f, std::round(fr / denom));
 	uint32_t g9 = (uint32_t)std::min(511.0f, std::round(fg / denom));
 	uint32_t b9 = (uint32_t)std::min(511.0f, std::round(fb / denom));
 
-	return (biased_exp << 27) | (b9 << 18) | (g9 << 9) | r9;
+	uint32_t packed =
+		(biased_exp << 27) |
+		(b9 << 18) |
+		(g9 << 9) |
+		r9;
+	memcpy(rgbe, &packed, sizeof(uint32_t));
+	/*rgbe[0] = packed & 0xff;
+	rgbe[1] = (packed >> 8) & 0xff;
+	rgbe[2] = (packed >> 16) & 0xff;
+	rgbe[3] = (packed >> 24) & 0xff; */
 }
 void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
@@ -2538,8 +2544,13 @@ void Viewer::load_textures() {
 			}
 
 			assert(tex_height % 6 == 0);
+
+			for (size_t i = 0; i < tex_width * tex_height; i++) {
+				size_t j = 4 * i;
+				rgbe_to_e5b9g9r9(&image[j]);				
+			}
 			//flip_vertical(image, tex_width, tex_height);
-			std::vector<float> converted_rgba(tex_width * tex_height * 4, 0);
+			/*std::vector<float> converted_rgba(tex_width * tex_height * 4, 0);
 			for (size_t i = 0; i < tex_width * tex_height; i ++) {
 				size_t j = 4 * i;
 				std::cout << (int)image[j] << " " << (int)image[j + 1] << " " << (int)image[j + 2] << " " << (int)image[j + 3] << std::endl;
@@ -2552,21 +2563,21 @@ void Viewer::load_textures() {
 				converted_rgba[j + 1] = std::ldexp((image[j + 1] + 0.5f) / 256.0f, exp);
 				converted_rgba[j + 2] = std::ldexp((image[j + 2] + 0.5f) / 256.0f, exp);
 				converted_rgba[j + 3] = 1.0f;
-			}
+			}*/
 
 			texture_name_to_index[name] = static_cast<uint32_t>(textures.size());
 			env_texture_index = static_cast<uint32_t>(textures.size());
 		
 			textures.emplace_back(rtg.helpers.create_cubemap(
 				VkExtent2D{ .width = static_cast<uint32_t>(tex_width), .height = static_cast<uint32_t>(tex_height) / 6 },
-				VK_FORMAT_R32G32B32A32_SFLOAT,
+				VK_FORMAT_E5B9G9R9_UFLOAT_PACK32,
 				VK_IMAGE_TILING_OPTIMAL,
 				VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 				Helpers::Unmapped
 			));
 
-			rtg.helpers.transfer_to_cubemap(converted_rgba.data(), tex_width * tex_height * 16, textures.back());
+			rtg.helpers.transfer_to_cubemap(image, tex_width * tex_height * 4, textures.back());
 			stbi_image_free(image);
 
 		}
