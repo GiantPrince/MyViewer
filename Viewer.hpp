@@ -110,6 +110,7 @@ struct Viewer : RTG::Application {
 		using Vertex = Vertex;
 
 		VkPipeline handle = VK_NULL_HANDLE;
+		VkPipeline env_handle = VK_NULL_HANDLE;
 
 		void create(RTG&, VkRenderPass, uint32_t subpass);
 		void destroy(RTG&);
@@ -256,11 +257,15 @@ struct Viewer : RTG::Application {
 		MeshSlice vertices;
 		ObjectsPipeline::Transform transform;
 		uint32_t texture = 0;
+		enum class Type {
+			ALBEDO,
+			ENV
+		} texture_type;
+		//uint32_t texture_type = 0;
 	};
 	std::vector<ObjectInstance> object_instances;
 		
 	ObjectsPipeline::World world;
-
 
 	// loading all mesh indices
 	std::vector<Vertex> load_mesh_vertices();
@@ -323,6 +328,11 @@ struct Viewer : RTG::Application {
 	double get_query_results(uint32_t workspace_index);
 
 	double timestamp_period = 0;
+
+	uint32_t rgbe_to_e5b9g9r9(uint32_t rgbe);
+
+	// env texture index
+	uint32_t env_texture_index = 0;
 	//--------------------------------------------------------------------
 	//Rendering function, uses all the resources above to queue work to draw a frame:
 

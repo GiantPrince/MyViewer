@@ -62,7 +62,7 @@ struct Helpers {
 	AllocatedImage create_image(VkExtent2D const &extent, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, MapFlag map = Unmapped);
 	void destroy_image(AllocatedImage &&allocated_image);
 	
-
+	AllocatedImage create_cubemap(VkExtent2D const& extent, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, MapFlag map = Unmapped);
 	//-----------------------
 	//CPU -> GPU data transfer:
 	VkCommandPool transfer_command_pool = VK_NULL_HANDLE;
@@ -71,7 +71,7 @@ struct Helpers {
 	// NOTE: synchronizes *hard* against the GPU; inefficient to use for streaming data!
 	void transfer_to_buffer(void const *data, size_t size, AllocatedBuffer &target);
 	void transfer_to_image(void const *data, size_t size, AllocatedImage &image); //NOTE: image layout after call is VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-
+	void transfer_to_cubemap(void const* data, size_t size, AllocatedImage& image);
 	//-----------------------
 	//Misc utilities:
 	//for selecting memory types (used by allocate, above):

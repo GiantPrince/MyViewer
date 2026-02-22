@@ -17,6 +17,7 @@
 #include <stack>
 
 
+
 Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 	//refsol::Tutorial_constructor(rtg, &depth_format, &render_pass, &command_pool);
 	depth_format = rtg.helpers.find_image_format(
@@ -330,26 +331,38 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 	{
 		texture_views.reserve(textures.size());
 		for (Helpers::AllocatedImage const& image : textures) {
-			VkImageViewCreateInfo create_info{
-				.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-				.flags = 0,
-				.image = image.handle,
-				.viewType = VK_IMAGE_VIEW_TYPE_2D,
-				.format = image.format,
-				.subresourceRange = {
+			VkImageViewCreateInfo create_info{};
+			if (image.format == VK_FORMAT_R32G32B32A32_SFLOAT) {
+				create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+				create_info.flags = 0;
+				create_info.image = image.handle;
+				create_info.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+				create_info.format = image.format;
+				create_info.subresourceRange = {
+					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+					.baseMipLevel = 0,
+					.levelCount = 1,
+					.baseArrayLayer = 0,
+					.layerCount = 6
+				};					
+			}
+			else {
+				create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+				create_info.flags = 0;
+				create_info.image = image.handle;
+				create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+				create_info.format = image.format;
+				create_info.subresourceRange = {
 					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 					.baseMipLevel = 0,
 					.levelCount = 1,
 					.baseArrayLayer = 0,
 					.layerCount = 1
-				}
-			};
+				};
+			}			
 			VkImageView image_view = VK_NULL_HANDLE;
 			VK(vkCreateImageView(rtg.device, &create_info, nullptr, &image_view));
-
 			texture_views.emplace_back(image_view);
-
-
 		}
 
 		assert(texture_views.size() == textures.size());
@@ -1263,6 +1276,42 @@ double Viewer::get_query_results(uint32_t workspace_index)
 	
 }
 
+uint32_t Viewer::rgbe_to_e5b9g9r9(uint32_t rgbe)
+{
+	if (rgbe == 0) return 0;
+
+	// 1. Extract (Assuming standard Radiance order: R, G, B, E)
+	// If colors are still wrong, swap these shifts.
+	uint32_t e = rgbe & 0xFF;
+	uint32_t b = (rgbe >> 8) & 0xFF;
+	uint32_t g = (rgbe >> 16) & 0xFF;
+	uint32_t r = (rgbe >> 24) & 0xFF;
+
+	if (e == 0) return 0;
+
+	// 2. Convert RGBE to linear float
+	float scale = std::ldexp(1.0f, e - 128 - 8);
+	float fr = r * scale;
+	float fg = g * scale;
+	float fb = b * scale;
+
+	// 3. Find max for shared exponent
+	float max_c = std::max(fr, std::max(fg, fb));
+
+	int shared_exp;
+	std::frexp(max_c, &shared_exp);
+
+	// Clamp exponent to E5 range (Bias 15)
+	int biased_exp = std::max(0, std::min(31, shared_exp + 15));
+
+	// 4. Calculate 9-bit mantissas
+	float denom = std::ldexp(1.0f, biased_exp - 15 - 9);
+	uint32_t r9 = (uint32_t)std::min(511.0f, std::round(fr / denom));
+	uint32_t g9 = (uint32_t)std::min(511.0f, std::round(fg / denom));
+	uint32_t b9 = (uint32_t)std::min(511.0f, std::round(fb / denom));
+
+	return (biased_exp << 27) | (b9 << 18) | (g9 << 9) | r9;
+}
 void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 	static std::unique_ptr<Timer> timer;
@@ -1671,30 +1720,60 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 			for (ObjectInstance const& inst : object_instances) {
 				uint32_t index = uint32_t(&inst - &object_instances[0]);
-
-				vkCmdBindDescriptorSets(
-					workspace.command_buffer,
-					VK_PIPELINE_BIND_POINT_GRAPHICS,
-					objects_pipeline.layout,
-					2,
-					1, &texture_descriptors[inst.texture],
-					0, nullptr
-				);
-
-				if (!rtg.configuration.indexed) {
-					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
-				}
-				else {
-					vkCmdDrawIndexed(
+				if (inst.texture_type == ObjectInstance::Type::ALBEDO) {
+					vkCmdBindDescriptorSets(
 						workspace.command_buffer,
-						inst.vertices.count,   
-						1,                    
-						inst.vertices.first,   
-						0,                    
-						index                 
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						objects_pipeline.layout,
+						2,
+						1, &texture_descriptors[inst.texture],
+						0, nullptr
 					);
+
+					if (!rtg.configuration.indexed) {
+						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+					}
+					else {
+						vkCmdDrawIndexed(
+							workspace.command_buffer,
+							inst.vertices.count,
+							1,
+							inst.vertices.first,
+							0,
+							index
+						);
+					}
+				}								
+			}
+
+			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.env_handle);
+
+			for (ObjectInstance const& inst : object_instances) {
+				uint32_t index = uint32_t(&inst - &object_instances[0]);
+				if (inst.texture_type == ObjectInstance::Type::ENV) {
+					vkCmdBindDescriptorSets(
+						workspace.command_buffer,
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						objects_pipeline.layout,
+						2,
+						1, &texture_descriptors[inst.texture],
+						0, nullptr
+					);
+
+					if (!rtg.configuration.indexed) {
+						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+					}
+					else {
+						vkCmdDrawIndexed(
+							workspace.command_buffer,
+							inst.vertices.count,
+							1,
+							inst.vertices.first,
+							0,
+							index
+						);
+					}
 				}
-				
 			}
 			if (rtg.configuration.profile) {
 				vkCmdWriteTimestamp(workspace.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, query_pool, render_params.workspace_index * 2 + 1);
@@ -2378,11 +2457,13 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, const mat4& world_from_local_normal)
 {
 	uint32_t texture_index = 0;
+	ObjectInstance::Type texture_type = ObjectInstance::Type::ALBEDO;
 
 	if (mesh.material != nullptr) {
 		// add object instance
 		if (std::holds_alternative<S72::Material::Lambertian>(mesh.material->brdf)) {
 			S72::Material::Lambertian lambert = std::get<S72::Material::Lambertian>(mesh.material->brdf);
+			texture_type = ObjectInstance::Type::ALBEDO;
 			if (std::holds_alternative<S72::color>(lambert.albedo)) {
 				S72::color albedo_color = std::get<S72::color>(lambert.albedo);
 				texture_index = texture_color_to_index.at(albedo_color);
@@ -2391,10 +2472,15 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 				S72::Texture* albedo_texture = std::get<S72::Texture*>(lambert.albedo);
 				std::string texture_key = albedo_texture->src + ", format " + std::to_string(int(albedo_texture->type)) + ", type " + std::to_string(int(albedo_texture->format));
 				texture_index = texture_name_to_index.at(texture_key);
-			}
+			}			
+		}
+		else if (std::holds_alternative<S72::Material::Environment>(mesh.material->brdf)) {
+			
+			texture_index = env_texture_index;
+			texture_type = ObjectInstance::Type::ENV;
 		}
 		else {
-			throw std::runtime_error("Unsupported material type");
+			throw std::runtime_error("Unsupported material type");			
 		}
 	}
 
@@ -2406,7 +2492,8 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 				.WORLD_FROM_LOCAL = world_from_local,
 				.WORLD_FROM_LOCAL_NORMAL = world_from_local_normal
 			},
-			.texture = texture_index
+			.texture = texture_index,
+			.texture_type = texture_type
 			});
 	}
 	else {
@@ -2417,11 +2504,14 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 				.WORLD_FROM_LOCAL = world_from_local,
 				.WORLD_FROM_LOCAL_NORMAL = world_from_local_normal
 			},
-			.texture = texture_index
+			.texture = texture_index,
+			.texture_type = texture_type
 			});
 	}
 	
 }
+
+
 
 void Viewer::load_textures() {
 	textures.reserve(rtg.scene.textures.size());
@@ -2439,53 +2529,93 @@ void Viewer::load_textures() {
 	rtg.helpers.transfer_to_image(&default_material_albedo, 12, textures.back());
 
 	for (const auto& [name, texture] : rtg.scene.textures) {
-		int tex_width, tex_height, tex_channels;
-		stbi_set_flip_vertically_on_load(true);
-		unsigned char* image = stbi_load(texture.path.c_str(), &tex_width, &tex_height, &tex_channels, 0);
-		if (image == nullptr) {
-			throw std::runtime_error("Failed to load texture image: " + texture.path);
-		}
+		if (texture.type == S72::Texture::Type::cube) {
+			int tex_width, tex_height, tex_channels;
+			//stbi_set_flip_vertically_on_load(true);
+			unsigned char* image = stbi_load(texture.path.c_str(), &tex_width, &tex_height, &tex_channels, 4);
+			if (image == nullptr) {
+				throw std::runtime_error("Failed to load texture image: " + texture.path);
+			}
 
-		//assert(tex_channels == 3);
-		VkFormat format = VK_FORMAT_UNDEFINED;
-		if (tex_channels == 3) {
-			if (texture.format == S72::Texture::Format::linear) {
-				format = VK_FORMAT_R8G8B8_UNORM;
+			assert(tex_height % 6 == 0);
+			//flip_vertical(image, tex_width, tex_height);
+			std::vector<float> converted_rgba(tex_width * tex_height * 4, 0);
+			for (size_t i = 0; i < tex_width * tex_height; i ++) {
+				size_t j = 4 * i;
+				if (image[j] == 0 && image[j + 1] == 0 && image[j + 2] == 0 && image[j + 3] == 0) {
+					continue;
+				}
+				int exp = int(image[j + 3]) - 128;
+				converted_rgba[j] = std::ldexp((image[j] + 0.5f) / 256.0f, exp);
+				converted_rgba[j + 1] = std::ldexp((image[j + 1] + 0.5f) / 256.0f, exp);
+				converted_rgba[j + 2] = std::ldexp((image[j + 2] + 0.5f) / 256.0f, exp);
+				converted_rgba[j + 3] = 1.0f;
 			}
-			else if (texture.format == S72::Texture::Format::srgb) {
-				format = VK_FORMAT_R8G8B8_SRGB;
-			}
-			else {
-				throw std::runtime_error("Unsupported texture format");
-			}
+
+			texture_name_to_index[name] = static_cast<uint32_t>(textures.size());
+			env_texture_index = static_cast<uint32_t>(textures.size());
+		
+			textures.emplace_back(rtg.helpers.create_cubemap(
+				VkExtent2D{ .width = static_cast<uint32_t>(tex_width), .height = static_cast<uint32_t>(tex_height) / 6 },
+				VK_FORMAT_R32G32B32A32_SFLOAT,
+				VK_IMAGE_TILING_OPTIMAL,
+				VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				Helpers::Unmapped
+			));
+
+			rtg.helpers.transfer_to_cubemap(converted_rgba.data(), tex_width * tex_height * 16, textures.back());
+			stbi_image_free(image);
+
 		}
 		else {
-			if (texture.format == S72::Texture::Format::linear) {
-				format = VK_FORMAT_R8G8B8A8_UNORM;
+			int tex_width, tex_height, tex_channels;
+			stbi_set_flip_vertically_on_load(true);
+			unsigned char* image = stbi_load(texture.path.c_str(), &tex_width, &tex_height, &tex_channels, 0);
+			if (image == nullptr) {
+				throw std::runtime_error("Failed to load texture image: " + texture.path);
 			}
-			else if (texture.format == S72::Texture::Format::srgb) {
-				format = VK_FORMAT_R8G8B8A8_SRGB;
+
+			VkFormat format = VK_FORMAT_UNDEFINED;
+			if (tex_channels == 3) {
+				if (texture.format == S72::Texture::Format::linear) {
+					format = VK_FORMAT_R8G8B8_UNORM;
+				}
+				else if (texture.format == S72::Texture::Format::srgb) {
+					format = VK_FORMAT_R8G8B8_SRGB;
+				}
+				else {
+					throw std::runtime_error("Unsupported texture format");
+				}
 			}
 			else {
-				throw std::runtime_error("Unsupported texture format");
+				if (texture.format == S72::Texture::Format::linear) {
+					format = VK_FORMAT_R8G8B8A8_UNORM;
+				}
+				else if (texture.format == S72::Texture::Format::srgb) {
+					format = VK_FORMAT_R8G8B8A8_SRGB;
+				}
+				else {
+					throw std::runtime_error("Unsupported texture format");
+				}
 			}
+
+			texture_name_to_index[name] = static_cast<uint32_t>(textures.size());
+
+			textures.emplace_back(rtg.helpers.create_image(
+				VkExtent2D{ .width = static_cast<uint32_t>(tex_width), .height = static_cast<uint32_t>(tex_height) },
+				format,
+				VK_IMAGE_TILING_OPTIMAL,
+				VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				Helpers::Unmapped
+			));
+
+			rtg.helpers.transfer_to_image(image, tex_width * tex_height * tex_channels, textures.back());
+			stbi_image_free(image);
+
 		}
-
-
-
-		texture_name_to_index[name] = static_cast<uint32_t>(textures.size());
-
-		textures.emplace_back(rtg.helpers.create_image(
-			VkExtent2D{ .width = static_cast<uint32_t>(tex_width), .height = static_cast<uint32_t>(tex_height) },
-			format,
-			VK_IMAGE_TILING_OPTIMAL,
-			VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			Helpers::Unmapped
-		));
-
-		rtg.helpers.transfer_to_image(image, tex_width * tex_height * tex_channels, textures.back());
-		stbi_image_free(image);
+		
 	}
 
 

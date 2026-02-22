@@ -46,6 +46,7 @@ int main(int argc, char **argv) {
 		//main loop -- handles events, renders frames, etc:
 		rtg.run(application);
 
+
 	} catch (std::exception &e) {
 		std::cerr << "Exception: " << e.what() << std::endl;
 		return 1;

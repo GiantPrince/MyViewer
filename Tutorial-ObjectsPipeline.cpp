@@ -12,9 +12,14 @@ static uint32_t frag_code[]
 #include "spv/objects.frag.inl"
 ;
 
+static uint32_t env_frag_code[]
+#include "spv/objects-environment.frag.inl"
+;
+
 void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_t subpass) {
 	VkShaderModule vert_module = rtg.helpers.create_shader_module(vert_code);
 	VkShaderModule frag_module = rtg.helpers.create_shader_module(frag_code);
+	VkShaderModule env_frag_module = rtg.helpers.create_shader_module(env_frag_code);
 
 	{
 		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
@@ -104,6 +109,21 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 			}
 		};
 
+		std::array <VkPipelineShaderStageCreateInfo, 2> env_stages{
+			VkPipelineShaderStageCreateInfo{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.stage = VK_SHADER_STAGE_VERTEX_BIT,
+				.module = vert_module,
+				.pName = "main"
+			},
+			VkPipelineShaderStageCreateInfo{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.module = env_frag_module,
+				.pName = "main"
+			}
+		};
+
 		std::vector<VkDynamicState> dynamic_states{
 			VK_DYNAMIC_STATE_VIEWPORT,
 			VK_DYNAMIC_STATE_SCISSOR
@@ -186,9 +206,15 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 		};
 
 		VK(vkCreateGraphicsPipelines(rtg.device, VK_NULL_HANDLE, 1, &create_info, nullptr, &handle));
+		
+		create_info.stageCount = static_cast<uint32_t>(env_stages.size());
+		create_info.pStages = env_stages.data();
+
+		VK(vkCreateGraphicsPipelines(rtg.device, VK_NULL_HANDLE, 1, &create_info, nullptr, &env_handle));
 
 		vkDestroyShaderModule(rtg.device, vert_module, nullptr);
 		vkDestroyShaderModule(rtg.device, frag_module, nullptr);
+		vkDestroyShaderModule(rtg.device, env_frag_module, nullptr);
 
 
 
@@ -209,6 +235,11 @@ void Viewer::ObjectsPipeline::destroy(RTG& rtg) {
 	if (handle != VK_NULL_HANDLE) {
 		vkDestroyPipeline(rtg.device, handle, nullptr);
 		handle = VK_NULL_HANDLE;
+	}
+
+	if (env_handle != VK_NULL_HANDLE) {
+		vkDestroyPipeline(rtg.device, env_handle, nullptr);
+		env_handle = VK_NULL_HANDLE;
 	}
 
 	if (set2_TEXTURE != VK_NULL_HANDLE) {

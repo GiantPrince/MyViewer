@@ -60,6 +60,7 @@ main_objs.push( maek.CPP('Tutorial-LinesPipeline.cpp', undefined, { depends:[...
 const objects_shaders = [
 	maek.GLSLC('objects.vert'),
 	maek.GLSLC('objects.frag'),
+	maek.GLSLC('objects-environment.frag')
 ];
 main_objs.push( maek.CPP('Tutorial-ObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 
@@ -76,7 +77,7 @@ main_objs.push( maek.CPP('Tutorial-ObjectsPipeline.cpp', undefined, { depends:[.
 //	prebuilt_objs.push(`pre/${maek.OS}-${process.arch}/refsol${maek.DEFAULT_OPTIONS.objSuffix}`);
 //}
 
-const main_exe = maek.LINK([...main_objs], 'bin/main');
+const main_exe = maek.LINK([...main_objs], 'bin/viewer');
 
 //default targets:
 maek.TARGETS = [main_exe];
