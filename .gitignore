@@ -1,9 +1,7 @@
 maek-cache.json
 objs/
 spv/
-bin/main
-bin/main.exe
-bin/main.pdb
+bin/*
 .vs
 img/
 CppProperties.json
@@ -18,3 +16,6 @@ scenes/
 report/
 scripts/
 *.txt
+checkImage.cpp
+/bin/viewer.exe
+/bin/viewer.pdb
