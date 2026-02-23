@@ -84,6 +84,12 @@ struct Viewer : RTG::Application {
 		VkDescriptorSetLayout set0_World = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set3_Camera = VK_NULL_HANDLE;
+
+		struct Camera {
+			mat4 CLIP_FROM_WORLD;
+			vec4 EYE;
+		};
 
 		struct Transform {
 			mat4 CLIP_FROM_LOCAL;
@@ -101,7 +107,7 @@ struct Viewer : RTG::Application {
 
 		static_assert(sizeof(World) == 4 * 4 + 4 * 4 + 4 * 4 + 4 * 4, "World is the expected size.");		
 
-		using Camera = LinesPipeline::Camera;
+		//using Camera = LinesPipeline::Camera;
 
 		// no push constants
 
@@ -111,6 +117,7 @@ struct Viewer : RTG::Application {
 
 		VkPipeline handle = VK_NULL_HANDLE;
 		VkPipeline env_handle = VK_NULL_HANDLE;
+		VkPipeline mirror_handle = VK_NULL_HANDLE;
 
 		void create(RTG&, VkRenderPass, uint32_t subpass);
 		void destroy(RTG&);
@@ -259,7 +266,8 @@ struct Viewer : RTG::Application {
 		uint32_t texture = 0;
 		enum class Type {
 			ALBEDO,
-			ENV
+			ENV,
+			MIRROR
 		} texture_type;
 		//uint32_t texture_type = 0;
 	};
@@ -330,6 +338,9 @@ struct Viewer : RTG::Application {
 	double timestamp_period = 0;
 
 	void rgbe_to_e5b9g9r9(unsigned char* rgbe);
+
+	//get camera position
+	vec4 get_current_camera_position();
 
 	// env texture index
 	uint32_t env_texture_index = 0;

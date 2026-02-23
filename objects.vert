@@ -1,7 +1,8 @@
 #version 450
 
-layout(set=0, binding=0, std140) uniform Camera{
+layout(set=3, binding=0, std140) uniform Camera{
 	mat4 CLIP_FROM_WORLD;
+	vec4 EYE;
 };
 
 struct Transform {
@@ -22,12 +23,14 @@ layout(location = 3) in vec2 TexCoord;
 layout(location = 0) out vec3 position;
 layout(location = 1) out vec3 normal;
 layout(location = 2) out vec2 texCoord;
+layout(location = 3) out vec3 view;
 
 
 void main()
 {
 	gl_Position = TRANSFORMS[gl_InstanceIndex].CLIP_FROM_MODEL * vec4(Position, 1.0);
 	position = mat4x3(TRANSFORMS[gl_InstanceIndex].WORLD_FROM_LOCAL) * vec4(Position, 1.0);
+	view = position - vec3(EYE);
 	normal = mat3(TRANSFORMS[gl_InstanceIndex].WORLD_FROM_LOCAL_NORMAL) * Normal;
 	texCoord = TexCoord;
 

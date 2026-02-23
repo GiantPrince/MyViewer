@@ -60,9 +60,16 @@ main_objs.push( maek.CPP('Tutorial-LinesPipeline.cpp', undefined, { depends:[...
 const objects_shaders = [
 	maek.GLSLC('objects.vert'),
 	maek.GLSLC('objects.frag'),
-	maek.GLSLC('objects-environment.frag')
+	maek.GLSLC('objects-environment.frag'),
+	maek.GLSLC('objects-mirror.frag')
 ];
 main_objs.push( maek.CPP('Tutorial-ObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
+
+
+const cube_objs = [
+    maek.CPP('main-cube.cpp')    
+];
+const cube_exe = maek.LINK([...cube_objs], 'bin/cube');
 
 //const prebuilt_objs = [ ];
 
@@ -80,7 +87,7 @@ main_objs.push( maek.CPP('Tutorial-ObjectsPipeline.cpp', undefined, { depends:[.
 const main_exe = maek.LINK([...main_objs], 'bin/viewer');
 
 //default targets:
-maek.TARGETS = [main_exe];
+maek.TARGETS = [main_exe, cube_exe];
 
 //- - - - - - - - - - - - - - - - - - - - -
 function custom_flags_and_rules() {

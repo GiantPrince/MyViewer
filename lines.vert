@@ -2,6 +2,7 @@
 
 layout(set=0, binding=0, std140) uniform Camera{
 	mat4 CLIP_FROM_WORLD;
+	vec4 EYE;
 };
 
 layout(location = 0) in vec3 position;

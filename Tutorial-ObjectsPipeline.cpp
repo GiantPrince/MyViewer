@@ -16,11 +16,17 @@ static uint32_t env_frag_code[]
 #include "spv/objects-environment.frag.inl"
 ;
 
+static uint32_t mirror_frag_code[]
+#include "spv/objects-mirror.frag.inl"
+;
+
 void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_t subpass) {
 	VkShaderModule vert_module = rtg.helpers.create_shader_module(vert_code);
 	VkShaderModule frag_module = rtg.helpers.create_shader_module(frag_code);
 	VkShaderModule env_frag_module = rtg.helpers.create_shader_module(env_frag_code);
-
+	VkShaderModule mirror_frag_module = rtg.helpers.create_shader_module(mirror_frag_code);
+	
+	
 	{
 		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
 			VkDescriptorSetLayoutBinding{
@@ -77,10 +83,33 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 	}
 
 	{
-		std::array<VkDescriptorSetLayout, 3> layouts{
+		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
+			VkDescriptorSetLayoutBinding{
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				.descriptorCount = 1,
+				.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+			}
+		};
+
+		VkDescriptorSetLayoutCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = uint32_t(bindings.size()),
+			.pBindings = bindings.data()
+		};
+
+		VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set3_Camera));
+
+	}
+
+	
+
+	{
+		std::array<VkDescriptorSetLayout, 4> layouts{
 			set0_World,
 			set1_Transforms,
-			set2_TEXTURE
+			set2_TEXTURE,
+			set3_Camera
 		};
 
 		VkPipelineLayoutCreateInfo create_info{
@@ -123,6 +152,23 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 				.pName = "main"
 			}
 		};
+
+		std::array <VkPipelineShaderStageCreateInfo, 2> mirror_stages{
+			VkPipelineShaderStageCreateInfo{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.stage = VK_SHADER_STAGE_VERTEX_BIT,
+				.module = vert_module,
+				.pName = "main"
+			},
+			VkPipelineShaderStageCreateInfo{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.module = mirror_frag_module,
+				.pName = "main"
+			}
+		};
+
+
 
 		std::vector<VkDynamicState> dynamic_states{
 			VK_DYNAMIC_STATE_VIEWPORT,
@@ -212,10 +258,16 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 
 		VK(vkCreateGraphicsPipelines(rtg.device, VK_NULL_HANDLE, 1, &create_info, nullptr, &env_handle));
 
+		create_info.stageCount = static_cast<uint32_t>(mirror_stages.size());
+		create_info.pStages = mirror_stages.data();
+
+		VK(vkCreateGraphicsPipelines(rtg.device, VK_NULL_HANDLE, 1, &create_info, nullptr, &mirror_handle));
+
+
 		vkDestroyShaderModule(rtg.device, vert_module, nullptr);
 		vkDestroyShaderModule(rtg.device, frag_module, nullptr);
 		vkDestroyShaderModule(rtg.device, env_frag_module, nullptr);
-
+		vkDestroyShaderModule(rtg.device, mirror_frag_module, nullptr);
 
 
 	}
@@ -240,6 +292,17 @@ void Viewer::ObjectsPipeline::destroy(RTG& rtg) {
 	if (env_handle != VK_NULL_HANDLE) {
 		vkDestroyPipeline(rtg.device, env_handle, nullptr);
 		env_handle = VK_NULL_HANDLE;
+	}
+
+
+	if (mirror_handle != VK_NULL_HANDLE) {
+		vkDestroyPipeline(rtg.device, mirror_handle, nullptr);
+		mirror_handle = VK_NULL_HANDLE;
+	}
+
+	if (set3_Camera != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set3_Camera, nullptr);
+		set3_Camera = VK_NULL_HANDLE;
 	}
 
 	if (set2_TEXTURE != VK_NULL_HANDLE) {

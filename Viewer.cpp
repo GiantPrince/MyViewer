@@ -160,14 +160,14 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 
 		}
 		workspace.Camera_src = rtg.helpers.create_buffer(
-			sizeof(LinesPipeline::Camera),
+			sizeof(ObjectsPipeline::Camera),
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			Helpers::Mapped
 		);
 
 		workspace.Camera = rtg.helpers.create_buffer(
-			sizeof(LinesPipeline::Camera),
+			sizeof(ObjectsPipeline::Camera),
 			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			Helpers::Unmapped
@@ -1318,6 +1318,47 @@ void Viewer::rgbe_to_e5b9g9r9(unsigned char *rgbe)
 	rgbe[2] = (packed >> 16) & 0xff;
 	rgbe[3] = (packed >> 24) & 0xff; */
 }
+vec4 Viewer::get_current_camera_position()
+{
+	if (camera_mode == CameraMode::Free) {
+		float ca = std::cos(free_camera.azimuth);
+		float sa = std::sin(free_camera.azimuth);
+		float ce = std::cos(free_camera.elevation);
+		float se = std::sin(free_camera.elevation);
+		
+		float out_x = ce * ca;
+		float out_y = ce * sa;
+		float out_z = se;
+		
+		float eye_x = free_camera.target_x + free_camera.radius * out_x;
+		float eye_y = free_camera.target_y + free_camera.radius * out_y;
+		float eye_z = free_camera.target_z + free_camera.radius * out_z;
+		return vec4{ eye_x, eye_y, eye_z, 0.0f };
+	}
+	else if (camera_mode == CameraMode::Debug) {
+		float ca = std::cos(debug_camera.azimuth);
+		float sa = std::sin(debug_camera.azimuth);
+		float ce = std::cos(debug_camera.elevation);
+		float se = std::sin(debug_camera.elevation);
+
+		float out_x = ce * ca;
+		float out_y = ce * sa;
+		float out_z = se;
+
+		float eye_x = debug_camera.target_x + debug_camera.radius * out_x;
+		float eye_y = debug_camera.target_y + debug_camera.radius * out_y;
+		float eye_z = debug_camera.target_z + debug_camera.radius * out_z;
+		return vec4{ eye_x, eye_y, eye_z, 0.0f };
+	}
+	else if (camera_mode == CameraMode::Scene) {
+		return vec4{ scene_camera.eye_x, scene_camera.eye_y, scene_camera.eye_z, 0.0f };
+	}
+	else {
+		throw std::runtime_error("Not supported camera mode.");
+		
+	}
+	return vec4{ };
+}
 void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 	static std::unique_ptr<Timer> timer;
@@ -1405,8 +1446,9 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 		vkCmdCopyBuffer(workspace.command_buffer, workspace.line_vertices_src.handle, workspace.line_vertices.handle, 1, &copy_region);
 		{
-			LinesPipeline::Camera camera{
-				.CLIP_FROM_WORLD = CLIP_FROM_WORLD
+			ObjectsPipeline::Camera camera{
+				.CLIP_FROM_WORLD = CLIP_FROM_WORLD,
+				.EYE = get_current_camera_position()
 			};
 			assert(workspace.Camera_src.size == sizeof(camera));
 
@@ -1533,8 +1575,9 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 
 		{
-			LinesPipeline::Camera camera{
-				.CLIP_FROM_WORLD = CLIP_FROM_WORLD
+			ObjectsPipeline::Camera camera{
+				.CLIP_FROM_WORLD = CLIP_FROM_WORLD,
+				.EYE = get_current_camera_position()
 			};
 			assert(workspace.Camera_src.size == sizeof(camera));
 
@@ -1705,7 +1748,7 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			{
 				std::array<VkDescriptorSet, 2> descriptor_sets{
 					workspace.World_descriptors,
-					workspace.Transforms_descriptors
+					workspace.Transforms_descriptors									
 				};
 
 				vkCmdBindDescriptorSets(
@@ -1727,12 +1770,14 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			for (ObjectInstance const& inst : object_instances) {
 				uint32_t index = uint32_t(&inst - &object_instances[0]);
 				if (inst.texture_type == ObjectInstance::Type::ALBEDO) {
+					std::array<VkDescriptorSet, 2> descriptor_sets{  texture_descriptors[inst.texture], workspace.Camera_descriptors};
+
 					vkCmdBindDescriptorSets(
 						workspace.command_buffer,
 						VK_PIPELINE_BIND_POINT_GRAPHICS,
 						objects_pipeline.layout,
 						2,
-						1, &texture_descriptors[inst.texture],
+						2, descriptor_sets.data(),
 						0, nullptr
 					);
 
@@ -1757,12 +1802,46 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			for (ObjectInstance const& inst : object_instances) {
 				uint32_t index = uint32_t(&inst - &object_instances[0]);
 				if (inst.texture_type == ObjectInstance::Type::ENV) {
+					std::array<VkDescriptorSet, 2> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors};
+
 					vkCmdBindDescriptorSets(
 						workspace.command_buffer,
 						VK_PIPELINE_BIND_POINT_GRAPHICS,
 						objects_pipeline.layout,
 						2,
-						1, &texture_descriptors[inst.texture],
+						2, descriptor_sets.data(),
+						0, nullptr
+					);
+
+					if (!rtg.configuration.indexed) {
+						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+					}
+					else {
+						vkCmdDrawIndexed(
+							workspace.command_buffer,
+							inst.vertices.count,
+							1,
+							inst.vertices.first,
+							0,
+							index
+						);
+					}
+				}
+			}
+
+			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.mirror_handle);
+
+			for (ObjectInstance const& inst : object_instances) {
+				uint32_t index = uint32_t(&inst - &object_instances[0]);
+				if (inst.texture_type == ObjectInstance::Type::MIRROR) {
+					std::array<VkDescriptorSet, 2> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors};
+
+					vkCmdBindDescriptorSets(
+						workspace.command_buffer,
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						objects_pipeline.layout,
+						2,
+						2, descriptor_sets.data(),
 						0, nullptr
 					);
 
@@ -2305,7 +2384,18 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 				}
 			}
 			else {
-				throw std::runtime_error("Unsupported light type");
+				vec4 dir = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 1.0f, 0.0f };
+				float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+				dir[0] = dir[0] / len;
+				dir[1] = dir[1] / len;
+				dir[2] = dir[2] / len;
+				world.SKY_DIRECTION.x = dir[0];
+				world.SKY_DIRECTION.y = dir[1];
+				world.SKY_DIRECTION.z = dir[2];
+				world.SKY_ENERGY.r = 1;
+				world.SKY_ENERGY.g = 1;
+				world.SKY_ENERGY.b = 1;
+				//throw std::runtime_error("Unsupported light type");
 			}
 		}
 
@@ -2485,8 +2575,12 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 			texture_index = env_texture_index;
 			texture_type = ObjectInstance::Type::ENV;
 		}
+		else if (std::holds_alternative<S72::Material::Mirror>(mesh.material->brdf)) {
+			texture_index = env_texture_index;
+			texture_type = ObjectInstance::Type::MIRROR;
+		}
 		else {
-			throw std::runtime_error("Unsupported material type");			
+			//throw std::runtime_error("Unsupported material type");			
 		}
 	}
 
@@ -2590,6 +2684,9 @@ void Viewer::load_textures() {
 			}
 
 			VkFormat format = VK_FORMAT_UNDEFINED;
+			if (tex_channels == 1) {
+				continue;
+			}
 			if (tex_channels == 3) {
 				if (texture.format == S72::Texture::Format::linear) {
 					format = VK_FORMAT_R8G8B8_UNORM;
