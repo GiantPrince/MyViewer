@@ -33,5 +33,4 @@ void main()
 	view = position - vec3(EYE);
 	normal = mat3(TRANSFORMS[gl_InstanceIndex].WORLD_FROM_LOCAL_NORMAL) * Normal;
 	texCoord = TexCoord;
-
 }

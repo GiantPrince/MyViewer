@@ -2405,17 +2405,17 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 
 		if (root->mesh != nullptr) {
 			if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::NONE) {
-				render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+				render_mesh(*root->mesh, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
 			}
 			else if (rtg.configuration.culling_mode == RTG::Configuration::CullingMode::FRUSTUM) {
 				if (camera_mode != CameraMode::Scene) {
 					if (is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL)) {
-						render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+						render_mesh(*root->mesh, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
 					}
 				}
 				else if (scene_camera.ready) {
 					if (is_mesh_in_frustum(root->mesh->name, mesh_bounding_boxes[root->mesh->name], WORLD_FROM_LOCAL)) {
-						render_mesh(*root->mesh, WORLD_FROM_LOCAL, world_from_local);
+						render_mesh(*root->mesh, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
 					}
 				}
 				else {
