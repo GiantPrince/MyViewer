@@ -103,6 +103,7 @@ struct Viewer : RTG::Application {
 			struct { float r, g, b, padding_; } SKY_ENERGY = { 0, 0, 0, 0 };
 			struct { float x, y, z, padding_; } SUN_DIRECTION;
 			struct { float r, g, b, padding_; } SUN_ENERGY = { 0, 0, 0, 0 };
+			
 		};
 
 		static_assert(sizeof(World) == 4 * 4 + 4 * 4 + 4 * 4 + 4 * 4, "World is the expected size.");		

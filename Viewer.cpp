@@ -375,9 +375,9 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 			.magFilter = VK_FILTER_NEAREST,
 			.minFilter = VK_FILTER_NEAREST,
 			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-			.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-			.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-			.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 			.mipLodBias = 0.0f,
 			.anisotropyEnable = VK_FALSE,
 			.maxAnisotropy = 0.0f,
@@ -2350,6 +2350,10 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 			scene_camera.up_z = up[2];
 		}
 
+		/*if (root->environment != nullptr) {
+			world.ENV_WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL_NORMAL;
+		}*/
+
 		if (root->light != nullptr) {
 			if (std::holds_alternative<S72::Light::Sun>(root->light->source)) {
 				S72::Light::Sun sun = std::get<S72::Light::Sun>(root->light->source);
@@ -2612,7 +2616,6 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 }
 
 
-
 void Viewer::load_textures() {
 	textures.reserve(rtg.scene.textures.size());
 
@@ -2631,11 +2634,13 @@ void Viewer::load_textures() {
 	for (const auto& [name, texture] : rtg.scene.textures) {
 		if (texture.type == S72::Texture::Type::cube) {
 			int tex_width, tex_height, tex_channels;
-			//stbi_set_flip_vertically_on_load(true);
+			stbi_set_flip_vertically_on_load(false);
 			unsigned char* image = stbi_load(texture.path.c_str(), &tex_width, &tex_height, &tex_channels, 4);
 			if (image == nullptr) {
 				throw std::runtime_error("Failed to load texture image: " + texture.path);
 			}
+
+			
 
 			assert(tex_height % 6 == 0);
 

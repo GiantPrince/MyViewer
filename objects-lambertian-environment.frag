@@ -5,10 +5,11 @@ layout(set=0, binding=0, std140) uniform World{
 	vec3 SKY_ENERGY;
 
 	vec3 SUN_DIRECTION;
-	vec3 SUN_ENERGY;	
+	vec3 SUN_ENERGY;
 };
 
-layout(set=2, binding=0) uniform samplerCube TEXTURE;
+layout(set=2, binding=0) uniform sampler2D TEXTURE;
+layout(set=4, binding=0) uniform samplerCube ENV;
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
@@ -16,12 +17,11 @@ layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 texCoord;
 layout(location = 0) out vec4 outColor;
 
-
 void main() {
 	vec3 n = normalize(normal);
 	
-	vec3 albedo = texture(TEXTURE, n).rgb;
-	
-	outColor = vec4(albedo, 1.0);	
-	
+	vec3 albedo = texture(TEXTURE, texCoord).rgb / 3.1415926;
+
+	vec3 e = texture(ENV, n);
+	outColor = vec4(albedo * e, 1.0);
 }
