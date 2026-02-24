@@ -372,8 +372,8 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 		VkSamplerCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
 			.flags = 0,
-			.magFilter = VK_FILTER_NEAREST,
-			.minFilter = VK_FILTER_NEAREST,
+			.magFilter = VK_FILTER_LINEAR,
+			.minFilter = VK_FILTER_LINEAR,
 			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
 			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -2672,28 +2672,28 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 void Viewer::load_textures() {
 	textures.reserve(rtg.scene.textures.size());
 
-	S72::color default_material_albedo = { 0.8f, 0.8f, 0.8f };
+	float default_material_albedo[] = {0.8f, 0.8f, 0.8f, 1.0f};
 	textures.emplace_back(rtg.helpers.create_image(
 		VkExtent2D{ .width = 1, .height = 1 },
-		VK_FORMAT_R32G32B32_SFLOAT,
+		VK_FORMAT_R32G32B32A32_SFLOAT,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		Helpers::Unmapped
 	));
 
-	rtg.helpers.transfer_to_image(&default_material_albedo, 12, textures.back());
+	rtg.helpers.transfer_to_image(&default_material_albedo, 16, textures.back());
 
-	S72::color default_normal_map = { 0.5f, 0.5f, 1.0f };
+	float default_normal_map[] = {0.5f, 0.5f, 1.0f, 1.0f};
 	textures.emplace_back(rtg.helpers.create_image(
 		VkExtent2D{ .width = 1, .height = 1 },
-		VK_FORMAT_R32G32B32_SFLOAT,
+		VK_FORMAT_R32G32B32A32_SFLOAT,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		Helpers::Unmapped
 	));
-	rtg.helpers.transfer_to_image(&default_normal_map, 12, textures.back());
+	rtg.helpers.transfer_to_image(&default_normal_map, 16, textures.back());
 
 
 
@@ -2732,7 +2732,7 @@ void Viewer::load_textures() {
 		else {
 			int tex_width, tex_height, tex_channels;
 			stbi_set_flip_vertically_on_load(true);
-			unsigned char* image = stbi_load(texture.path.c_str(), &tex_width, &tex_height, &tex_channels, 0);
+			unsigned char* image = stbi_load(texture.path.c_str(), &tex_width, &tex_height, &tex_channels, 4);
 			if (image == nullptr) {
 				throw std::runtime_error("Failed to load texture image: " + texture.path);
 			}
@@ -2741,7 +2741,7 @@ void Viewer::load_textures() {
 			if (tex_channels == 1) {
 				continue;
 			}
-			if (tex_channels == 3) {
+			/*if (tex_channels == 3) {
 				if (texture.format == S72::Texture::Format::linear) {
 					format = VK_FORMAT_R8G8B8_UNORM;
 				}
@@ -2752,7 +2752,7 @@ void Viewer::load_textures() {
 					throw std::runtime_error("Unsupported texture format");
 				}
 			}
-			else if (tex_channels == 4) {
+			else if (tex_channels == 4) {*/
 				if (texture.format == S72::Texture::Format::linear) {
 					format = VK_FORMAT_R8G8B8A8_UNORM;
 				}
@@ -2762,10 +2762,10 @@ void Viewer::load_textures() {
 				else {
 					throw std::runtime_error("Unsupported texture format");
 				}
-			}
+			/*}
 			else {
 				throw std::runtime_error("Unsupported texture format");
-			}
+			}*/
 
 			texture_name_to_index[name] = static_cast<uint32_t>(textures.size());
 
@@ -2778,7 +2778,7 @@ void Viewer::load_textures() {
 				Helpers::Unmapped
 			));
 
-			rtg.helpers.transfer_to_image(image, tex_width * tex_height * tex_channels, textures.back());
+			rtg.helpers.transfer_to_image(image, tex_width * tex_height * 4, textures.back());
 			stbi_image_free(image);
 
 		}
@@ -2795,16 +2795,17 @@ void Viewer::load_textures() {
 				S72::color albedo_color = std::get<S72::color>(lambert.albedo);
 
 				if (texture_color_to_index.count(albedo_color) == 0) {
+					float albedo[] = { albedo_color.r, albedo_color.g, albedo_color.b, 1.0f };
 					textures.emplace_back(rtg.helpers.create_image(
 						VkExtent2D{ .width = 1, .height = 1 },
-						VK_FORMAT_R32G32B32_SFLOAT,
+						VK_FORMAT_R32G32B32A32_SFLOAT,
 						VK_IMAGE_TILING_OPTIMAL,
 						VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 						Helpers::Unmapped
 					));
 
-					rtg.helpers.transfer_to_image(&albedo_color, 12, textures.back());
+					rtg.helpers.transfer_to_image(albedo, 16, textures.back());
 					texture_color_to_index[albedo_color] = static_cast<uint32_t>(textures.size() - 1);
 				}
 
