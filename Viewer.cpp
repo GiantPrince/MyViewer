@@ -1877,7 +1877,7 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 					if (rtg.scene.environments.empty()) {
 						continue;
 					}
-					std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[env_texture_index], texture_descriptors[inst.normal_map] };
+					std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors.back(), texture_descriptors[inst.normal_map]};
 
 					vkCmdBindDescriptorSets(
 						workspace.command_buffer,
@@ -2752,7 +2752,7 @@ void Viewer::load_textures() {
 					throw std::runtime_error("Unsupported texture format");
 				}
 			}
-			else if (tex_channels == 3) {
+			else if (tex_channels == 4) {
 				if (texture.format == S72::Texture::Format::linear) {
 					format = VK_FORMAT_R8G8B8A8_UNORM;
 				}
@@ -2822,7 +2822,7 @@ void Viewer::load_textures() {
 		int tex_width, tex_height, tex_channels;
 		stbi_set_flip_vertically_on_load(false);
 		auto path = rtg.scene.environments.begin()->second.radiance->path;
-		std::string lambertian_env_path = path.substr(0, path.size() - 3) + "lambertian.my.png";
+		std::string lambertian_env_path = path.substr(0, path.size() - 3) + "lambertian.png";
 		unsigned char* image = stbi_load(lambertian_env_path.c_str(), &tex_width, &tex_height, &tex_channels, 4);
 		if (image == nullptr) {
 			throw std::runtime_error("Failed to load texture image: " + lambertian_env_path);
