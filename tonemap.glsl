@@ -11,7 +11,7 @@ vec3 expose(vec3 color) {
 }
 
 vec3 linear_tonemap(vec3 color) {
-	return clamp(color, 0, 1);
+	return clamp(color, 0.0, 1.0);
 }
 
 vec3 reinhard_tonemap(vec3 color) {	

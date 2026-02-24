@@ -1721,8 +1721,6 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
 		}
 
-
-
 		//objects
 		{
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.handle);
@@ -1780,14 +1778,14 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 					if (!rtg.scene.environments.empty()) {
 						continue;
 					}
-					std::array<VkDescriptorSet, 2> descriptor_sets{  texture_descriptors[inst.texture], workspace.Camera_descriptors};
+					std::array<VkDescriptorSet, 4> descriptor_sets{  texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[env_texture_index], texture_descriptors[inst.normal_map]};
 
 					vkCmdBindDescriptorSets(
 						workspace.command_buffer,
 						VK_PIPELINE_BIND_POINT_GRAPHICS,
 						objects_pipeline.layout,
 						2,
-						2, descriptor_sets.data(),
+						static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
 						0, nullptr
 					);
 
@@ -1812,14 +1810,14 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			for (ObjectInstance const& inst : object_instances) {
 				uint32_t index = uint32_t(&inst - &object_instances[0]);
 				if (inst.texture_type == ObjectInstance::Type::ENV) {
-					std::array<VkDescriptorSet, 2> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors};
+					std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[env_texture_index], texture_descriptors[inst.normal_map] };
 
 					vkCmdBindDescriptorSets(
 						workspace.command_buffer,
 						VK_PIPELINE_BIND_POINT_GRAPHICS,
 						objects_pipeline.layout,
 						2,
-						2, descriptor_sets.data(),
+						static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
 						0, nullptr
 					);
 
@@ -1844,14 +1842,14 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			for (ObjectInstance const& inst : object_instances) {
 				uint32_t index = uint32_t(&inst - &object_instances[0]);
 				if (inst.texture_type == ObjectInstance::Type::MIRROR) {
-					std::array<VkDescriptorSet, 2> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors};
+					std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[env_texture_index], texture_descriptors[inst.normal_map] };
 
 					vkCmdBindDescriptorSets(
 						workspace.command_buffer,
 						VK_PIPELINE_BIND_POINT_GRAPHICS,
 						objects_pipeline.layout,
 						2,
-						2, descriptor_sets.data(),
+						static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
 						0, nullptr
 					);
 
@@ -1879,14 +1877,14 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 					if (rtg.scene.environments.empty()) {
 						continue;
 					}
-					std::array<VkDescriptorSet, 3> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors.back() };
+					std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[env_texture_index], texture_descriptors[inst.normal_map] };
 
 					vkCmdBindDescriptorSets(
 						workspace.command_buffer,
 						VK_PIPELINE_BIND_POINT_GRAPHICS,
 						objects_pipeline.layout,
 						2,
-						3, descriptor_sets.data(),
+						static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
 						0, nullptr
 					);
 
@@ -2604,6 +2602,7 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, const mat4& world_from_local_normal)
 {
 	uint32_t texture_index = 0;
+	uint32_t normal_map_index = 1;
 	ObjectInstance::Type texture_type = ObjectInstance::Type::ALBEDO;
 
 	if (mesh.material != nullptr) {
@@ -2633,6 +2632,11 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 		else {
 			//throw std::runtime_error("Unsupported material type");			
 		}
+
+		if (mesh.material->normal_map != nullptr) {
+			std::string texture_key = mesh.material->normal_map->src + ", format " + std::to_string(int(mesh.material->normal_map->type)) + ", type " + std::to_string(int(mesh.material->normal_map->format));
+			normal_map_index = texture_name_to_index.at(texture_key);
+		}
 	}
 
 	if (!rtg.configuration.indexed) {
@@ -2644,7 +2648,8 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 				.WORLD_FROM_LOCAL_NORMAL = world_from_local_normal
 			},
 			.texture = texture_index,
-			.texture_type = texture_type
+			.texture_type = texture_type,
+			.normal_map = normal_map_index
 			});
 	}
 	else {
@@ -2656,7 +2661,8 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 				.WORLD_FROM_LOCAL_NORMAL = world_from_local_normal
 			},
 			.texture = texture_index,
-			.texture_type = texture_type
+			.texture_type = texture_type,
+			.normal_map = normal_map_index
 			});
 	}
 	
@@ -2677,6 +2683,19 @@ void Viewer::load_textures() {
 	));
 
 	rtg.helpers.transfer_to_image(&default_material_albedo, 12, textures.back());
+
+	S72::color default_normal_map = { 0.5f, 0.5f, 1.0f };
+	textures.emplace_back(rtg.helpers.create_image(
+		VkExtent2D{ .width = 1, .height = 1 },
+		VK_FORMAT_R32G32B32_SFLOAT,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		Helpers::Unmapped
+	));
+	rtg.helpers.transfer_to_image(&default_normal_map, 12, textures.back());
+
+
 
 	for (const auto& [name, texture] : rtg.scene.textures) {
 		if (texture.type == S72::Texture::Type::cube) {
@@ -2733,7 +2752,7 @@ void Viewer::load_textures() {
 					throw std::runtime_error("Unsupported texture format");
 				}
 			}
-			else {
+			else if (tex_channels == 3) {
 				if (texture.format == S72::Texture::Format::linear) {
 					format = VK_FORMAT_R8G8B8A8_UNORM;
 				}
@@ -2743,6 +2762,9 @@ void Viewer::load_textures() {
 				else {
 					throw std::runtime_error("Unsupported texture format");
 				}
+			}
+			else {
+				throw std::runtime_error("Unsupported texture format");
 			}
 
 			texture_name_to_index[name] = static_cast<uint32_t>(textures.size());

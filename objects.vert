@@ -24,6 +24,8 @@ layout(location = 0) out vec3 position;
 layout(location = 1) out vec3 normal;
 layout(location = 2) out vec2 texCoord;
 layout(location = 3) out vec3 view;
+layout(location = 4) out vec3 tangent;
+layout(location = 5) out vec3 bitangent;
 
 
 void main()
@@ -33,4 +35,6 @@ void main()
 	view = position - vec3(EYE);
 	normal = mat3(TRANSFORMS[gl_InstanceIndex].WORLD_FROM_LOCAL_NORMAL) * Normal;
 	texCoord = TexCoord;
+	tangent = mat3(TRANSFORMS[gl_InstanceIndex].WORLD_FROM_LOCAL_NORMAL) * vec3(Tangent);
+	bitangent = Tangent.w * cross(normal, tangent);
 }

@@ -86,6 +86,7 @@ struct Viewer : RTG::Application {
 		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set3_Camera = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set4_Environment = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set5_NormalMap = VK_NULL_HANDLE;
 
 		struct Camera {
 			mat4 CLIP_FROM_WORLD;
@@ -275,7 +276,7 @@ struct Viewer : RTG::Application {
 			ENV,
 			MIRROR
 		} texture_type;
-		//uint32_t texture_type = 0;
+		uint32_t normal_map = 1;
 	};
 	std::vector<ObjectInstance> object_instances;
 		

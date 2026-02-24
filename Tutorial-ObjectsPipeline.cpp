@@ -126,6 +126,26 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 
 	}
 
+	{
+		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
+			VkDescriptorSetLayoutBinding{
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.descriptorCount = 1,
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+			}
+		};
+
+		VkDescriptorSetLayoutCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = uint32_t(bindings.size()),
+			.pBindings = bindings.data()
+		};
+
+		VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set5_NormalMap));
+
+	}
+
 	
 
 	{
@@ -135,12 +155,13 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 			.size = sizeof(Push)
 		};
 
-		std::array<VkDescriptorSetLayout, 5> layouts{
+		std::array<VkDescriptorSetLayout, 6> layouts{
 			set0_World,
 			set1_Transforms,
 			set2_TEXTURE,
 			set3_Camera,
-			set4_Environment
+			set4_Environment,
+			set5_NormalMap
 		};
 
 		VkPipelineLayoutCreateInfo create_info{
@@ -362,6 +383,11 @@ void Viewer::ObjectsPipeline::destroy(RTG& rtg) {
 	if (set4_Environment != VK_NULL_HANDLE) {
 		vkDestroyDescriptorSetLayout(rtg.device, set4_Environment, nullptr);
 		set4_Environment = VK_NULL_HANDLE;
+	}
+
+	if (set5_NormalMap != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set5_NormalMap, nullptr);
+		set5_NormalMap = VK_NULL_HANDLE;
 	}
 
 	if (set2_TEXTURE != VK_NULL_HANDLE) {
