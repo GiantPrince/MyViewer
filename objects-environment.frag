@@ -1,5 +1,7 @@
 #version 450
 
+#include "tonemap.glsl"
+
 layout(set=0, binding=0, std140) uniform World{
 	vec3 SKY_DIRECTION;
 	vec3 SKY_ENERGY;
@@ -21,7 +23,7 @@ void main() {
 	vec3 n = normalize(normal);
 	
 	vec3 albedo = texture(TEXTURE, n).rgb;
-	
-	outColor = vec4(albedo, 1.0);	
+	vec3 tonemapped_color = tonemap(albedo);
+	outColor = vec4(tonemapped_color, 1.0);	
 	
 }

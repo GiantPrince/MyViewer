@@ -1726,7 +1726,14 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 		//objects
 		{
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.handle);
+			{
+				ObjectsPipeline::Push push{
+					.exposure = rtg.configuration.exposure,
+					.tone_operator = static_cast<int>(rtg.configuration.tone_operator)
+				};
 
+				vkCmdPushConstants(workspace.command_buffer, objects_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectsPipeline::Push), &push);
+			}
 			{
 				std::array<VkBuffer, 1> vertex_buffers{ mesh_vertex_buffer.handle };
 				std::array<VkDeviceSize, 1> offsets{ 0 };
@@ -1770,6 +1777,9 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			for (ObjectInstance const& inst : object_instances) {
 				uint32_t index = uint32_t(&inst - &object_instances[0]);
 				if (inst.texture_type == ObjectInstance::Type::ALBEDO) {
+					if (!rtg.scene.environments.empty()) {
+						continue;
+					}
 					std::array<VkDescriptorSet, 2> descriptor_sets{  texture_descriptors[inst.texture], workspace.Camera_descriptors};
 
 					vkCmdBindDescriptorSets(
@@ -1860,6 +1870,43 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 					}
 				}
 			}
+
+			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.lambertian_env_handle);
+
+			for (ObjectInstance const& inst : object_instances) {
+				uint32_t index = uint32_t(&inst - &object_instances[0]);
+				if (inst.texture_type == ObjectInstance::Type::ALBEDO) {
+					if (rtg.scene.environments.empty()) {
+						continue;
+					}
+					std::array<VkDescriptorSet, 3> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors.back() };
+
+					vkCmdBindDescriptorSets(
+						workspace.command_buffer,
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						objects_pipeline.layout,
+						2,
+						3, descriptor_sets.data(),
+						0, nullptr
+					);
+
+					if (!rtg.configuration.indexed) {
+						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+					}
+					else {
+						vkCmdDrawIndexed(
+							workspace.command_buffer,
+							inst.vertices.count,
+							1,
+							inst.vertices.first,
+							0,
+							index
+						);
+					}
+				}
+			}
+
+
 			if (rtg.configuration.profile) {
 				vkCmdWriteTimestamp(workspace.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, query_pool, render_params.workspace_index * 2 + 1);
 			}
@@ -2639,30 +2686,13 @@ void Viewer::load_textures() {
 			if (image == nullptr) {
 				throw std::runtime_error("Failed to load texture image: " + texture.path);
 			}
-
 			
-
 			assert(tex_height % 6 == 0);
 
 			for (size_t i = 0; i < tex_width * tex_height; i++) {
 				size_t j = 4 * i;
 				rgbe_to_e5b9g9r9(&image[j]);				
-			}
-			//flip_vertical(image, tex_width, tex_height);
-			/*std::vector<float> converted_rgba(tex_width * tex_height * 4, 0);
-			for (size_t i = 0; i < tex_width * tex_height; i ++) {
-				size_t j = 4 * i;
-				std::cout << (int)image[j] << " " << (int)image[j + 1] << " " << (int)image[j + 2] << " " << (int)image[j + 3] << std::endl;
-
-				if (image[j] == 0 && image[j + 1] == 0 && image[j + 2] == 0 && image[j + 3] == 0) {
-					continue;
-				}
-				int exp = int(image[j + 3]) - 128;
-				converted_rgba[j] = std::ldexp((image[j] + 0.5f) / 256.0f, exp);
-				converted_rgba[j + 1] = std::ldexp((image[j + 1] + 0.5f) / 256.0f, exp);
-				converted_rgba[j + 2] = std::ldexp((image[j + 2] + 0.5f) / 256.0f, exp);
-				converted_rgba[j + 3] = 1.0f;
-			}*/
+			}			
 
 			texture_name_to_index[name] = static_cast<uint32_t>(textures.size());
 			env_texture_index = static_cast<uint32_t>(textures.size());
@@ -2733,9 +2763,10 @@ void Viewer::load_textures() {
 		
 	}
 
-
+	bool lambertian = false;
 	for (const auto& [name, material] : rtg.scene.materials) {
-		if (std::holds_alternative<S72::Material::Lambertian>(material.brdf)) {
+		if (std::holds_alternative<S72::Material::Lambertian>(material.brdf)) {			
+			lambertian = true;
 			S72::Material::Lambertian lambert =
 				std::get<S72::Material::Lambertian>(material.brdf);
 			if (std::holds_alternative<S72::color>(lambert.albedo)) {
@@ -2764,6 +2795,39 @@ void Viewer::load_textures() {
 			}
 		}
 	}
+
+	if (lambertian && !rtg.scene.environments.empty()) {
+		int tex_width, tex_height, tex_channels;
+		stbi_set_flip_vertically_on_load(false);
+		auto path = rtg.scene.environments.begin()->second.radiance->path;
+		std::string lambertian_env_path = path.substr(0, path.size() - 3) + "lambertian.my.png";
+		unsigned char* image = stbi_load(lambertian_env_path.c_str(), &tex_width, &tex_height, &tex_channels, 4);
+		if (image == nullptr) {
+			throw std::runtime_error("Failed to load texture image: " + lambertian_env_path);
+		}
+
+		assert(tex_height % 6 == 0);
+
+		for (size_t i = 0; i < tex_width * tex_height; i++) {
+			size_t j = 4 * i;
+			rgbe_to_e5b9g9r9(&image[j]);
+		}
+
+		textures.emplace_back(rtg.helpers.create_cubemap(
+			VkExtent2D{ .width = static_cast<uint32_t>(tex_width), .height = static_cast<uint32_t>(tex_height) / 6 },
+			VK_FORMAT_E5B9G9R9_UFLOAT_PACK32,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			Helpers::Unmapped
+		));
+
+		rtg.helpers.transfer_to_cubemap(image, tex_width * tex_height * 4, textures.back());
+		stbi_image_free(image);
+
+	}
+	
+
 }
 
 void Viewer::construct_bounding_boxes(const std::vector<Vertex>& vertices)

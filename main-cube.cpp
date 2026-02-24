@@ -160,6 +160,7 @@ std::vector<unsigned char> preconvolvedLambertian(
 						irradiance += texels[t].radiance * (ct * texels[t].dOmega);
 					}
 				}
+				irradiance = irradiance * (1.0f / float(M_PI));
 				encode(irradiance, newImage, global_index * 4);				
 			}
 		}

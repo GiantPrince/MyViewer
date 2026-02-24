@@ -95,6 +95,29 @@ void RTG::Configuration::parse(int argc, char** argv) {
 		else if (arg == "--indexed") {
 			indexed = true;
 		}
+		else if (arg == "--exposure") {
+			if (argi + 1 >= argc) {
+				throw std::runtime_error("--exposure requires a parameter (the value of exposure)");
+			}
+			argi += 1;			
+			exposure = std::stof(argv[argi]);
+		}
+		else if (arg == "--tone-map") {
+			if (argi + 1 >= argc) {
+				throw std::runtime_error("--tone-map requires a parameter (the operator name of tone mapping)");
+			}
+			argi += 1;
+			std::string tone_op = argv[argi];
+			if (tone_op == "linear") {
+				tone_operator = ToneOperator::LINEAR;
+			}
+			else if (tone_op == "reinhard") {
+				tone_operator = ToneOperator::REINHARD;
+			}
+			else {
+				throw std::runtime_error("Unrecognized tone operator '" + tone_op + "'.");
+			}
+		}
 		else {
 			throw std::runtime_error("Unrecognized argument '" + arg + "'.");
 		}
@@ -106,6 +129,11 @@ void RTG::Configuration::usage(std::function< void(const char*, const char*) > c
 	callback("--physical-device <name>", "Run on the named physical device (guesses, otherwise).");
 	callback("--drawing-size <w> <h>", "Set the size of the surface to draw to.");
 	callback("--headless", "Don't create a window; read events from stdin.");
+	callback("--tone-map <op>", "Specify a tone mapping operator.");
+	callback("--exposure <E>", "Set the value of exposure before tone operator.");
+	callback("--camera <name>", "Set the initial scene camera to be the one named <name>.");
+	callback("--profile", "Enable profiling on GPU.");
+	callback("--indexed", "Enable indexed mesh.");
 }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(

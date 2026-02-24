@@ -96,6 +96,13 @@ struct RTG {
 		//enable indexed buffer
 		bool indexed = false;
 
+		//tone mapping
+		float exposure = 0.0f;
+		enum class ToneOperator {
+			LINEAR,
+			REINHARD
+		} tone_operator = ToneOperator::LINEAR;
+
 		//for configuration construction + management:
 		Configuration() = default;
 		void parse(int argc, char **argv); //parse command-line options; throws on error

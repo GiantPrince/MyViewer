@@ -85,6 +85,7 @@ struct Viewer : RTG::Application {
 		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set3_Camera = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set4_Environment = VK_NULL_HANDLE;
 
 		struct Camera {
 			mat4 CLIP_FROM_WORLD;
@@ -102,15 +103,18 @@ struct Viewer : RTG::Application {
 			struct { float x, y, z, padding_; } SKY_DIRECTION;
 			struct { float r, g, b, padding_; } SKY_ENERGY = { 0, 0, 0, 0 };
 			struct { float x, y, z, padding_; } SUN_DIRECTION;
-			struct { float r, g, b, padding_; } SUN_ENERGY = { 0, 0, 0, 0 };
-			
+			struct { float r, g, b, padding_; } SUN_ENERGY = { 0, 0, 0, 0 };			
 		};
 
 		static_assert(sizeof(World) == 4 * 4 + 4 * 4 + 4 * 4 + 4 * 4, "World is the expected size.");		
 
 		//using Camera = LinesPipeline::Camera;
 
-		// no push constants
+		//push constants
+		struct Push {
+			float exposure;
+			int tone_operator;
+		};
 
 		VkPipelineLayout layout = VK_NULL_HANDLE;
 
@@ -119,6 +123,7 @@ struct Viewer : RTG::Application {
 		VkPipeline handle = VK_NULL_HANDLE;
 		VkPipeline env_handle = VK_NULL_HANDLE;
 		VkPipeline mirror_handle = VK_NULL_HANDLE;
+		VkPipeline lambertian_env_handle = VK_NULL_HANDLE;
 
 		void create(RTG&, VkRenderPass, uint32_t subpass);
 		void destroy(RTG&);
