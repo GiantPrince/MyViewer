@@ -26,17 +26,15 @@ custom_flags_and_rules();
 
 //maek.CPP(...) builds a c++ file:
 // it returns the path to the output object file
+const rtg = [maek.CPP('RTG.cpp'), maek.CPP('Helpers.cpp'), maek.CPP('S72.cpp'), maek.CPP('sejp.cpp')]
 const main_objs = [
 	maek.CPP('Viewer.cpp'),
 	maek.CPP('PosColVertex.cpp'),
 	maek.CPP('PosNorTexVertex.cpp'),
 	maek.CPP('Vertex.cpp'),
-	maek.CPP('Timer.cpp'),
-	maek.CPP('RTG.cpp'),
-	maek.CPP('sejp.cpp'),
-	maek.CPP('S72.cpp'),
-	maek.CPP('Helpers.cpp'),
+	maek.CPP('Timer.cpp'),		
 	maek.CPP('main.cpp'),
+	...rtg
 ];
 
 //maek.GLSLC(...) builds a glsl source file:
@@ -70,8 +68,20 @@ main_objs.push( maek.CPP('Tutorial-ObjectsPipeline.cpp', undefined, { depends:[.
 const cube_objs = [
     maek.CPP('main-cube.cpp')    
 ];
-const cube_exe = maek.LINK([...cube_objs], 'bin/cube');
 
+const ggx_objs = [
+	maek.CPP('main-ggx.cpp'),
+	maek.CPP('CubeUtility.cpp'),
+	...rtg
+];
+
+const ggx_shaders = [
+	maek.GLSLC('cube.comp'),	
+];
+
+ggx_objs.push(maek.CPP('CubePipeline.cpp', undefined, { depends:[...ggx_shaders] }) ); 
+const cube_exe = maek.LINK([...cube_objs], 'bin/cube');
+const ggx_exe = maek.LINK([...ggx_objs], 'bin/ggx');
 //const prebuilt_objs = [ ];
 
 //use the prebuilt refsol.o unless refsol.cpp exists:
@@ -88,7 +98,7 @@ const cube_exe = maek.LINK([...cube_objs], 'bin/cube');
 const main_exe = maek.LINK([...main_objs], 'bin/viewer');
 
 //default targets:
-maek.TARGETS = [main_exe, cube_exe];
+maek.TARGETS = [main_exe, cube_exe, ggx_exe];
 
 //- - - - - - - - - - - - - - - - - - - - -
 function custom_flags_and_rules() {

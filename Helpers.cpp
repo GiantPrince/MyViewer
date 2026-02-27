@@ -485,6 +485,159 @@ void Helpers::transfer_to_cubemap(void const* data, size_t size, AllocatedImage&
 
 }
 
+void Helpers::transfer_image_to_vector(AllocatedImage& image, std::vector<unsigned char>& data)
+{
+	assert(image.handle != VK_NULL_HANDLE);
+
+	size_t bytes_per_block = vkuFormatTexelBlockSize(image.format);
+	size_t texels_per_block = vkuFormatTexelsPerBlock(image.format);
+	size_t size = image.extent.height * image.extent.width * bytes_per_block / texels_per_block * 6;
+	
+	AllocatedBuffer transfer_dst = create_buffer(
+		size,
+		VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+		Helpers::Mapped
+	);
+
+	VK(vkResetCommandBuffer(transfer_command_buffer, 0));
+
+	VkCommandBufferBeginInfo begin_info{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+	};
+
+	VK(vkBeginCommandBuffer(transfer_command_buffer, &begin_info));
+
+	VkImageSubresourceRange whole_image{
+		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+		.baseMipLevel = 0,
+		.levelCount = 1,
+		.baseArrayLayer = 0,
+		.layerCount = 6
+	};
+
+	{
+		VkImageMemoryBarrier barrier{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+			.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.image = image.handle,
+			.subresourceRange = whole_image
+		};
+
+		vkCmdPipelineBarrier(
+			transfer_command_buffer,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+
+	}
+
+	{
+		VkBufferImageCopy region{
+			.bufferOffset = 0,
+			.bufferRowLength = image.extent.width,
+			.bufferImageHeight = image.extent.height,
+			.imageSubresource{
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = 0,
+				.baseArrayLayer = 0,
+				.layerCount = 6
+			},
+			.imageOffset{.x = 0, .y = 0, .z = 0},
+			.imageExtent{
+				.width = image.extent.width,
+				.height = image.extent.height,
+				.depth = 1
+			}
+		};
+
+		vkCmdCopyImageToBuffer(
+			transfer_command_buffer,
+			image.handle,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			transfer_dst.handle,
+			1,
+			&region		
+		);
+
+	}
+	
+	VK(vkEndCommandBuffer(transfer_command_buffer));
+	VkSubmitInfo submit_info{
+		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.commandBufferCount = 1,
+		.pCommandBuffers = &transfer_command_buffer
+	};
+
+	VK(vkQueueSubmit(rtg.graphics_queue, 1, &submit_info, VK_NULL_HANDLE));
+
+	VK(vkQueueWaitIdle(rtg.graphics_queue));
+
+	data.assign(size, 0);
+	memcpy(data.data(), transfer_dst.allocation.data(), size);
+	
+	destroy_buffer(std::move(transfer_dst));
+}
+
+void Helpers::transfer_buffer_to_vector(AllocatedBuffer& buffer, std::vector<unsigned char>& data)
+{
+	assert(buffer.handle != VK_NULL_HANDLE);
+
+	AllocatedBuffer transfer_dst = create_buffer(
+		buffer.size,
+		VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		Mapped
+	);
+
+	{ // record command buffer to do CPU->GPU data transfer
+		VK(vkResetCommandBuffer(transfer_command_buffer, 0));
+
+		VkCommandBufferBeginInfo begin_info{
+			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+		};
+
+		VK(vkBeginCommandBuffer(transfer_command_buffer, &begin_info));
+
+		VkBufferCopy copy_region{
+			.srcOffset = 0,
+			.dstOffset = 0,
+			.size = buffer.size,
+		};
+		vkCmdCopyBuffer(transfer_command_buffer, buffer.handle, transfer_dst.handle, 1, &copy_region);
+
+		VK(vkEndCommandBuffer(transfer_command_buffer));
+	}
+
+	{
+		VkSubmitInfo submit_info{
+			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+			.commandBufferCount = 1,
+			.pCommandBuffers = &transfer_command_buffer,
+		};
+
+		VK(vkQueueSubmit(rtg.graphics_queue, 1, &submit_info, nullptr));
+		VK(vkQueueWaitIdle(rtg.graphics_queue));
+
+	}
+
+	data.resize(buffer.size);
+	memcpy(data.data(), transfer_dst.allocation.data(), buffer.size);
+	
+	destroy_buffer(std::move(transfer_dst));
+}
+
 //----------------------------
 uint32_t Helpers::find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags flags) const {
 	for (uint32_t i = 0; i < memory_properties.memoryTypeCount; i++) {

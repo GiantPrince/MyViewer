@@ -27,104 +27,132 @@
 
 
 void RTG::Configuration::parse(int argc, char** argv) {
-	for (int argi = 1; argi < argc; ++argi) {
-		std::string arg = argv[argi];
-		if (arg == "--debug") {
-			debug = true;
+	if (is_cube_utility) {
+		if (argc != 4) {
+			throw std::runtime_error("Should have exactly 3 arguments.");
 		}
-		else if (arg == "--no-debug") {
-			debug = false;
+
+		in_cubemap_file = argv[1];
+		out_cubemap_file = argv[3];
+		if (!in_cubemap_file.ends_with(".png")) {
+			throw std::runtime_error("Input cubemap file should be .png format.");
 		}
-		else if (arg == "--physical-device") {
-			if (argi + 1 >= argc) throw std::runtime_error("--physical-device requires a parameter (a device name).");
-			argi += 1;
-			physical_device_name = argv[argi];
+		if (!out_cubemap_file.ends_with(".png")) {
+			throw std::runtime_error("Output cubemap file should be .png format.");
 		}
-		else if (arg == "--drawing-size") {
-			if (argi + 2 >= argc) throw std::runtime_error("--drawing-size requires two parameters (width and height).");
-			auto conv = [&](std::string const& what) {
-				argi += 1;
-				std::string val = argv[argi];
-				for (size_t i = 0; i < val.size(); ++i) {
-					if (val[i] < '0' || val[i] > '9') {
-						throw std::runtime_error("--drawing-size " + what + " should match [0-9]+, got '" + val + "'.");
-					}
-				}
-				return std::stoul(val);
-				};
-			surface_extent.width = conv("width");
-			surface_extent.height = conv("height");
-		}		
-		else if (arg == "--headless") {
-			headless = true;
+
+		std::string mode = argv[2];
+		if (mode == "--ggx") {
+			cube_util_mode = CubeUtilMode::GGX;
 		}
-		else if (arg == "--scene") {
-			if (argi + 1 >= argc) 
-				throw std::runtime_error("--scene requires a parameter (a path to the scene file).");
-			argi += 1;
-			scene_file = argv[argi];
-			if (!scene_file.ends_with(".s72")) {
-				throw std::runtime_error("--scene parameter should be a .s72 file.");
-			}
-		}
-		else if (arg == "--culling") {
-			if (argi + 1 >= argc) 
-				throw std::runtime_error("--culling requires a parameter (culling mode).");
-			argi += 1;
-			std::string mode = argv[argi];
-			if (mode == "none") {
-				culling_mode = CullingMode::NONE;
-			}
-			else if (mode == "frustum") {
-				culling_mode = CullingMode::FRUSTUM;
-			}
-			else {
-				throw std::runtime_error("Unrecognized culling mode '" + mode + "'.");
-			}
-		}
-		else if (arg == "--camera") {
-			if (argi + 1 >= argc) {
-				throw std::runtime_error("--camera requires a parameter (camera name).");
-			}
-			argi += 1;
-			camera_name = argv[argi];
-		}
-		else if (arg == "--profile") {
-			profile = true;
-		}
-		else if (arg == "--indexed") {
-			indexed = true;
-		}
-		else if (arg == "--exposure") {
-			if (argi + 1 >= argc) {
-				throw std::runtime_error("--exposure requires a parameter (the value of exposure)");
-			}
-			argi += 1;			
-			exposure = std::stof(argv[argi]);
-		}
-		else if (arg == "--tone-map") {
-			if (argi + 1 >= argc) {
-				throw std::runtime_error("--tone-map requires a parameter (the operator name of tone mapping)");
-			}
-			argi += 1;
-			std::string tone_op = argv[argi];
-			if (tone_op == "linear") {
-				tone_operator = ToneOperator::LINEAR;
-			}
-			else if (tone_op == "reinhard") {
-				tone_operator = ToneOperator::REINHARD;
-			}
-			else {
-				throw std::runtime_error("Unrecognized tone operator '" + tone_op + "'.");
-			}
+		else if (mode == "--lambertian") {
+			cube_util_mode = CubeUtilMode::LAMBERTIAN;
 		}
 		else {
-			throw std::runtime_error("Unrecognized argument '" + arg + "'.");
+			throw std::runtime_error("Unrecognized argument " + mode + ".");
 		}
 	}
+	else {
+		for (int argi = 1; argi < argc; ++argi) {
+			std::string arg = argv[argi];
+			if (arg == "--debug") {
+				debug = true;
+			}
+			else if (arg == "--no-debug") {
+				debug = false;
+			}
+			else if (arg == "--physical-device") {
+				if (argi + 1 >= argc) throw std::runtime_error("--physical-device requires a parameter (a device name).");
+				argi += 1;
+				physical_device_name = argv[argi];
+			}
+			else if (arg == "--drawing-size") {
+				if (argi + 2 >= argc) throw std::runtime_error("--drawing-size requires two parameters (width and height).");
+				auto conv = [&](std::string const& what) {
+					argi += 1;
+					std::string val = argv[argi];
+					for (size_t i = 0; i < val.size(); ++i) {
+						if (val[i] < '0' || val[i] > '9') {
+							throw std::runtime_error("--drawing-size " + what + " should match [0-9]+, got '" + val + "'.");
+						}
+					}
+					return std::stoul(val);
+					};
+				surface_extent.width = conv("width");
+				surface_extent.height = conv("height");
+			}
+			else if (arg == "--headless") {
+				headless = true;
+			}
+			else if (arg == "--scene") {
+				if (argi + 1 >= argc)
+					throw std::runtime_error("--scene requires a parameter (a path to the scene file).");
+				argi += 1;
+				scene_file = argv[argi];
+				if (!scene_file.ends_with(".s72")) {
+					throw std::runtime_error("--scene parameter should be a .s72 file.");
+				}
+			}
+			else if (arg == "--culling") {
+				if (argi + 1 >= argc)
+					throw std::runtime_error("--culling requires a parameter (culling mode).");
+				argi += 1;
+				std::string mode = argv[argi];
+				if (mode == "none") {
+					culling_mode = CullingMode::NONE;
+				}
+				else if (mode == "frustum") {
+					culling_mode = CullingMode::FRUSTUM;
+				}
+				else {
+					throw std::runtime_error("Unrecognized culling mode '" + mode + "'.");
+				}
+			}
+			else if (arg == "--camera") {
+				if (argi + 1 >= argc) {
+					throw std::runtime_error("--camera requires a parameter (camera name).");
+				}
+				argi += 1;
+				camera_name = argv[argi];
+			}
+			else if (arg == "--profile") {
+				profile = true;
+			}
+			else if (arg == "--indexed") {
+				indexed = true;
+			}
+			else if (arg == "--exposure") {
+				if (argi + 1 >= argc) {
+					throw std::runtime_error("--exposure requires a parameter (the value of exposure)");
+				}
+				argi += 1;
+				exposure = std::stof(argv[argi]);
+			}
+			else if (arg == "--tone-map") {
+				if (argi + 1 >= argc) {
+					throw std::runtime_error("--tone-map requires a parameter (the operator name of tone mapping)");
+				}
+				argi += 1;
+				std::string tone_op = argv[argi];
+				if (tone_op == "linear") {
+					tone_operator = ToneOperator::LINEAR;
+				}
+				else if (tone_op == "reinhard") {
+					tone_operator = ToneOperator::REINHARD;
+				}
+				else {
+					throw std::runtime_error("Unrecognized tone operator '" + tone_op + "'.");
+				}
+			}
+			else {
+				throw std::runtime_error("Unrecognized argument '" + arg + "'.");
+			}
+		}
+	}
+	
 }
 
-void RTG::Configuration::usage(std::function< void(const char*, const char*) > const& callback) {
+void RTG::Configuration::usage(std::function< void(const char*, const char*) > const& callback) {	
 	callback("--debug, --no-debug", "Turn on/off debug and validation layers.");
 	callback("--physical-device <name>", "Run on the named physical device (guesses, otherwise).");
 	callback("--drawing-size <w> <h>", "Set the size of the surface to draw to.");
@@ -179,11 +207,13 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 	instance_extensions.emplace_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
 #endif
 
-	if (configuration.scene_file == "") {
-		throw std::runtime_error("No scene file specified. Use --scene <file.s72> to specify a scene file.");
-	}
+	
 
+	if (!configuration.is_cube_utility)
 	{
+		if (configuration.scene_file == "") {
+			throw std::runtime_error("No scene file specified. Use --scene <file.s72> to specify a scene file.");
+		}
 		// load the scene
 		try {
 			scene = S72::load(configuration.scene_file);
@@ -430,7 +460,7 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 
 			for (auto const& queue_family : queue_families) {
 				uint32_t i = uint32_t(&queue_family - &queue_families[0]);
-				if (queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+				if ((queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT) && (queue_family.queueFlags & VK_QUEUE_COMPUTE_BIT)) {
 					if (!graphics_queue_family)
 						graphics_queue_family = i;
 				}

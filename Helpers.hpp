@@ -72,6 +72,10 @@ struct Helpers {
 	void transfer_to_buffer(void const *data, size_t size, AllocatedBuffer &target);
 	void transfer_to_image(void const *data, size_t size, AllocatedImage &image); //NOTE: image layout after call is VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 	void transfer_to_cubemap(void const* data, size_t size, AllocatedImage& image);
+
+	//GPU -> CPU data transfer:
+	void transfer_image_to_vector(AllocatedImage& image, std::vector<unsigned char>& data);
+	void transfer_buffer_to_vector(AllocatedBuffer& buffer, std::vector<unsigned char>& data);
 	//-----------------------
 	//Misc utilities:
 	//for selecting memory types (used by allocate, above):

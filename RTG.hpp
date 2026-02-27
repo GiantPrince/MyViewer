@@ -103,6 +103,18 @@ struct RTG {
 			REINHARD
 		} tone_operator = ToneOperator::LINEAR;
 
+		// cube utility
+		bool is_cube_utility = false;
+
+		// cube utility mode
+		enum class CubeUtilMode {
+			GGX,
+			LAMBERTIAN
+		} cube_util_mode;
+
+		std::string in_cubemap_file = "";
+		std::string out_cubemap_file = "";
+
 		//for configuration construction + management:
 		Configuration() = default;
 		void parse(int argc, char **argv); //parse command-line options; throws on error
