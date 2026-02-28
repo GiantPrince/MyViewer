@@ -4,10 +4,15 @@ static uint32_t compute_code[] =
 #include"spv/cube.comp.inl"
 ;
 
+static uint32_t lut_code[] =
+#include"spv/lut.comp.inl"
+;
+
 void CubePipeline::create(RTG& rtg) {
 	VkShaderModule compute_module = rtg.helpers.create_shader_module(compute_code);
+	VkShaderModule lut_module = rtg.helpers.create_shader_module(lut_code);
 
-
+	if (rtg.configuration.cube_util_mode != RTG::Configuration::CubeUtilMode::LUT)
 	{
 		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
 			VkDescriptorSetLayoutBinding{
@@ -47,7 +52,7 @@ void CubePipeline::create(RTG& rtg) {
 		VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set1_outputImageCube));
 	}
 
-
+	if (rtg.configuration.cube_util_mode != RTG::Configuration::CubeUtilMode::LUT)
 	{
 		VkPushConstantRange range{
 			.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -70,8 +75,22 @@ void CubePipeline::create(RTG& rtg) {
 
 		VK(vkCreatePipelineLayout(rtg.device, &create_info, nullptr, &layout));
 	}
+	else {		
 
+		std::array<VkDescriptorSetLayout, 1> layouts{			
+			set1_outputImageCube
+		};
 
+		VkPipelineLayoutCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+			.setLayoutCount = static_cast<uint32_t>(layouts.size()),
+			.pSetLayouts = layouts.data(),			
+		};
+
+		VK(vkCreatePipelineLayout(rtg.device, &create_info, nullptr, &layout));
+	}
+
+	if (rtg.configuration.cube_util_mode != RTG::Configuration::CubeUtilMode::LUT)
 	{
 		VkPipelineShaderStageCreateInfo stage{
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -88,8 +107,25 @@ void CubePipeline::create(RTG& rtg) {
 
 		VK(vkCreateComputePipelines(rtg.device, nullptr, 1, &create_info, nullptr, &handle));
 	}
+	else {
+		VkPipelineShaderStageCreateInfo stage{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+			.module = lut_module,
+			.pName = "main"
+		};
+
+		VkComputePipelineCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+			.stage = stage,
+			.layout = layout
+		};
+
+		VK(vkCreateComputePipelines(rtg.device, nullptr, 1, &create_info, nullptr, &handle));
+	}
 
 	vkDestroyShaderModule(rtg.device, compute_module, nullptr);
+	vkDestroyShaderModule(rtg.device, lut_module, nullptr);
 
 }
 

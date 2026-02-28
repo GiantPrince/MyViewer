@@ -7,7 +7,9 @@
 
 #include "stb_image_write.hpp"
 
+#include <algorithm>
 #include <iostream>
+#include <fstream>
 
 
 void float_to_rgbe(const float* rgb, unsigned char* rgbe)
@@ -64,6 +66,7 @@ CubeUtility::CubeUtility(RTG& rtg) : rtg_(rtg) {
 		VK(vkCreateDescriptorPool(rtg.device, &create_info, nullptr, &descriptor_pool_));
 	}
 
+	if (rtg.configuration.cube_util_mode != RTG::Configuration::CubeUtilMode::LUT)
 	{
 		VkDescriptorSetAllocateInfo alloc_info{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -105,6 +108,8 @@ CubeUtility::CubeUtility(RTG& rtg) : rtg_(rtg) {
 		vkAllocateCommandBuffers(rtg.device, &command_buffer_alloc_info, &command_buffer_);
 
 	}
+
+	if (rtg.configuration.cube_util_mode != RTG::Configuration::CubeUtilMode::LUT)
 	{
 		VkSamplerCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -167,6 +172,121 @@ CubeUtility::~CubeUtility() {
 
 void CubeUtility::process_cubemap(const std::string& input_cubemap, const std::string& output_cubemap)
 {
+	if (input_cubemap.empty()) {
+		assert(rtg_.configuration.cube_util_mode == RTG::Configuration::CubeUtilMode::LUT);
+		int width = 400;
+		int height = 400;
+		{
+			output_images_.reserve(1);
+			
+			output_images_.emplace_back(rtg_.helpers.create_buffer(
+				width * height * 8,
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				Helpers::Unmapped
+			));
+
+			VkDescriptorBufferInfo buffer_info{
+				.buffer = output_images_[0].handle,
+				.offset = 0,
+				.range = output_images_[0].size
+			};
+
+			std::array< VkWriteDescriptorSet, 1> writes{
+			VkWriteDescriptorSet{
+					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+					.dstSet = output_image_descriptor_set,
+					.dstBinding = 0,
+					.dstArrayElement = 0,
+					.descriptorCount = 1,
+					.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+					.pBufferInfo = &buffer_info
+				}
+			};
+
+			vkUpdateDescriptorSets(
+				rtg_.device,
+				static_cast<uint32_t>(writes.size()),
+				writes.data(),
+				0,
+				nullptr
+			);
+		}
+
+		{
+			VkCommandBufferBeginInfo begin_info{
+				.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+				.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+			};
+
+			vkBeginCommandBuffer(command_buffer_, &begin_info);
+
+			vkCmdBindPipeline(command_buffer_, VK_PIPELINE_BIND_POINT_COMPUTE, cube_pipeline_.handle);
+
+			std::array<VkDescriptorSet, 1> descriptor_sets{				
+				output_image_descriptor_set
+			};
+			vkCmdBindDescriptorSets(
+				command_buffer_,
+				VK_PIPELINE_BIND_POINT_COMPUTE,
+				cube_pipeline_.layout,
+				0,
+				static_cast<uint32_t>(descriptor_sets.size()),
+				descriptor_sets.data(),
+				0, nullptr
+			);
+			
+			assert(width % 8 == 0);
+			assert(height % 8 == 0);
+			vkCmdDispatch(command_buffer_, (width / 8), (height / 8), 1);
+			vkEndCommandBuffer(command_buffer_);
+		}
+
+		{
+			VkSubmitInfo submit_info{
+				.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+				.commandBufferCount = 1,
+				.pCommandBuffers = &command_buffer_,
+			};
+			VK(vkQueueSubmit(rtg_.graphics_queue, 1, &submit_info, VK_NULL_HANDLE));
+			VK(vkQueueWaitIdle(rtg_.graphics_queue));
+		}
+
+		std::vector<unsigned char> data;
+		rtg_.helpers.transfer_buffer_to_vector(output_images_[0], data);
+
+		std::ofstream out(output_cubemap, std::ios::binary);
+		if (!out)
+			throw std::runtime_error("failed to open lut file " + output_cubemap);
+		
+		out.write(reinterpret_cast<const char*>(data.data()), data.size() * sizeof(unsigned char));
+
+		out.close();
+		
+
+		std::cout << output_cubemap << std::endl;
+
+		std::vector<uint8_t> png_data(width * height * 3); // RGB 8-bit
+		float* d = reinterpret_cast<float*>(data.data());
+		for (int i = 0; i < width * height; ++i)
+		{			
+			float r = d[i * 2 + 0];
+			float g = d[i * 2 + 1];
+			
+			r = std::clamp(r, 0.0f, 1.0f);
+			g = std::clamp(g, 0.0f, 1.0f);
+			
+			png_data[i * 3 + 0] = (uint8_t)std::min(255.0f, std::round(r * 255.0f));
+			png_data[i * 3 + 1] = (uint8_t)std::min(255.0f, std::round(g * 255.0f));
+			png_data[i * 3 + 2] = 0; // B channel fill 0	
+
+			
+		}
+
+		stbi_write_png("brdf.png", width, height, 3, png_data.data(), 3 * width);
+		return;
+
+	}
 	int tex_width, tex_height, tex_channels;
 	unsigned char* image = stbi_load(input_cubemap.c_str(), &tex_width, &tex_height, &tex_channels, 4);
 

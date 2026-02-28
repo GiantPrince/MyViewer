@@ -109,7 +109,8 @@ struct RTG {
 		// cube utility mode
 		enum class CubeUtilMode {
 			GGX,
-			LAMBERTIAN
+			LAMBERTIAN,
+			LUT
 		} cube_util_mode;
 
 		std::string in_cubemap_file = "";

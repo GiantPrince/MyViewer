@@ -76,7 +76,8 @@ const ggx_objs = [
 ];
 
 const ggx_shaders = [
-	maek.GLSLC('cube.comp'),	
+	maek.GLSLC('cube.comp'),
+	maek.GLSLC('lut.comp')
 ];
 
 ggx_objs.push(maek.CPP('CubePipeline.cpp', undefined, { depends:[...ggx_shaders] }) ); 

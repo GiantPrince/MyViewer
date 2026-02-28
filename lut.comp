@@ -1,0 +1,67 @@
+#version 450
+
+#include "cubeUtil.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) buffer OutputBuffer
+{
+    float data[];
+};
+
+float G_SchlickGGX(float NoX, float roughness)
+{
+    float a = roughness;
+    float k = (a * a) / 2.0;
+    return NoX / (NoX * (1.0 - k) + k);
+}
+
+float G_Smith(float roughness, float NoV, float NoL)
+{
+    float ggx1 = G_SchlickGGX(NoV, roughness);
+    float ggx2 = G_SchlickGGX(NoL, roughness);
+    return ggx1 * ggx2;
+}
+
+vec2 IntegrateBRDF(float Roughness, float NoV)
+{
+	vec3 V;
+	V.x = sqrt( 1.0f - NoV * NoV );
+	V.y = 0;
+	V.z = NoV;
+	vec3 N = vec3(0.0, 0.0, 1.0);
+
+	float A = 0;
+	float B = 0;
+	const uint NumSamples = 4096;
+	for(uint i = 0; i < NumSamples; i++)
+	{
+		vec2 Xi = Hammersley(i, NumSamples);
+		vec3 H = importanceSampleGGX(Xi, Roughness, N);
+		vec3 L = normalize(2 * dot(V, H) * H - V);
+		float NoL = clamp(L.z, 0, 1);
+		float NoH = clamp(H.z, 0, 1);
+		float VoH = clamp(dot( V, H ), 0, 1);
+		if(NoL > 0)
+		{
+			float G = G_Smith( Roughness, NoV, NoL );			
+			float G_Vis = G * VoH / (NoH * NoV);
+			float Fc = pow( 1 - VoH, 5 );
+			A += (1 - Fc) * G_Vis;
+			B += Fc * G_Vis;
+		}
+	}
+	return vec2( A, B ) / NumSamples;
+}
+
+
+void main() {
+	uint global_size_y = gl_NumWorkGroups.y * gl_WorkGroupSize.y;
+	uint global_size_x = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
+	float Roughness = 1.0 - clamp((gl_GlobalInvocationID.y + 0.5) / float(global_size_y), 0.000, 0.97);
+	float NoV = clamp((gl_GlobalInvocationID.x + 0.5) / float(global_size_x), 0.000, 1.0);
+	vec2 value = IntegrateBRDF(Roughness, NoV);
+	uint index = (gl_GlobalInvocationID.y * global_size_x + gl_GlobalInvocationID.x)* 2;
+	data[index + 0] = value.x;
+	data[index + 1] = value.y;
+}

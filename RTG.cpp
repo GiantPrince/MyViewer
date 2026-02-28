@@ -28,29 +28,40 @@
 
 void RTG::Configuration::parse(int argc, char** argv) {
 	if (is_cube_utility) {
-		if (argc != 4) {
-			throw std::runtime_error("Should have exactly 3 arguments.");
+		if (argc != 4 && argc != 3) {
+			throw std::runtime_error("Should have exactly 2 or 3 arguments.");
 		}
 
-		in_cubemap_file = argv[1];
-		out_cubemap_file = argv[3];
-		if (!in_cubemap_file.ends_with(".png")) {
-			throw std::runtime_error("Input cubemap file should be .png format.");
-		}
-		if (!out_cubemap_file.ends_with(".png")) {
-			throw std::runtime_error("Output cubemap file should be .png format.");
-		}
+		if (argc == 4) {
+			in_cubemap_file = argv[1];
+			out_cubemap_file = argv[3];
+			if (!in_cubemap_file.ends_with(".png")) {
+				throw std::runtime_error("Input cubemap file should be .png format.");
+			}
+			if (!out_cubemap_file.ends_with(".png")) {
+				throw std::runtime_error("Output cubemap file should be .png format.");
+			}
 
-		std::string mode = argv[2];
-		if (mode == "--ggx") {
-			cube_util_mode = CubeUtilMode::GGX;
-		}
-		else if (mode == "--lambertian") {
-			cube_util_mode = CubeUtilMode::LAMBERTIAN;
+			std::string mode = argv[2];
+			if (mode == "--ggx") {
+				cube_util_mode = CubeUtilMode::GGX;
+			}
+			else if (mode == "--lambertian") {
+				cube_util_mode = CubeUtilMode::LAMBERTIAN;
+			}
+			else {
+				throw std::runtime_error("Unrecognized argument " + mode + ".");
+			}
 		}
 		else {
-			throw std::runtime_error("Unrecognized argument " + mode + ".");
-		}
+			out_cubemap_file = argv[2];			
+			if (!out_cubemap_file.ends_with(".lut")) {
+				throw std::runtime_error("Output cubemap file should be .lut format.");
+			}
+			std::string mode = argv[1];
+			assert(mode == "--lut");
+			cube_util_mode = CubeUtilMode::LUT;
+		}		
 	}
 	else {
 		for (int argi = 1; argi < argc; ++argi) {

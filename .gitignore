@@ -19,3 +19,5 @@ scripts/
 checkImage.cpp
 /bin/viewer.exe
 /bin/viewer.pdb
+*.lut
+*.hdr
