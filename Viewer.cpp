@@ -2830,7 +2830,7 @@ void Viewer::load_textures() {
 
 			texture_name_to_index[name] = static_cast<uint32_t>(textures.size());
 			env_texture_index = static_cast<uint32_t>(textures.size());
-			uint32_t mipmap_levels = static_cast<uint32_t>(std::log2(std::min(tex_width, tex_height / 6)) + 1) - 1;
+			uint32_t mipmap_levels = 6;//static_cast<uint32_t>(std::log2(std::min(tex_width, tex_height / 6)) + 1) - 1;
 			max_mipmap_level = mipmap_levels;
 			textures.emplace_back(rtg.helpers.create_cubemap(
 				VkExtent2D{ .width = static_cast<uint32_t>(tex_width), .height = static_cast<uint32_t>(tex_height) / 6 },
@@ -2848,7 +2848,7 @@ void Viewer::load_textures() {
 			int original_width = textures.back().extent.width;
 			int original_height = textures.back().extent.height;
 			for (uint32_t mipmap_level = 1; mipmap_level < mipmap_levels; mipmap_level++) {
-				std::string path = texture.path.substr(0, texture.path.size() - 3) + "my." + std::to_string(mipmap_level) + ".png";
+				std::string path = texture.path.substr(0, texture.path.size() - 3) + std::to_string(mipmap_level) + ".png";
 				stbi_set_flip_vertically_on_load(false);
 				image = stbi_load(path.c_str(), &tex_width, &tex_height, &tex_channels, 4);
 				if (image == nullptr) {
@@ -3073,7 +3073,7 @@ void Viewer::load_textures() {
 		int tex_width, tex_height, tex_channels;
 		stbi_set_flip_vertically_on_load(false);
 		auto path = rtg.scene.environments.begin()->second.radiance->path;
-		std::string lambertian_env_path = path.substr(0, path.size() - 3) + "lambertian.my.png";
+		std::string lambertian_env_path = path.substr(0, path.size() - 3) + "lambertian.png";
 		unsigned char* image = stbi_load(lambertian_env_path.c_str(), &tex_width, &tex_height, &tex_channels, 4);
 		if (image == nullptr) {
 			throw std::runtime_error("Failed to load texture image: " + lambertian_env_path);

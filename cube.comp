@@ -6,7 +6,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 6) in;
 
 
 layout(set = 0, binding = 0) uniform samplerCube inputImageCube;
-layout(set = 1, binding = 0) buffer OutputBuffer
+layout(std430, set = 1, binding = 0) buffer OutputBuffer
 {
     float data[];
 };
@@ -29,9 +29,10 @@ vec3 PrefilterEnvMap(float Roughness, vec3 R) {
 		vec3 H = importanceSampleGGX(Xi, Roughness, N);
 		vec3 L = 2 * dot(V, H) * H - V;
 
-		float NoL = clamp(dot(N, L), 0, 1);
+		float NoL = clamp(dot(N, L), 0, 1);		
 		if (NoL > 0) {
-			prefilteredColor += texture(inputImageCube, L).rgb * NoL;
+			
+			prefilteredColor += textureLod(inputImageCube, L, 0.0).rgb * NoL;
 			totalWeight += NoL;
 		}
 	}
@@ -39,20 +40,19 @@ vec3 PrefilterEnvMap(float Roughness, vec3 R) {
 }
 
 vec3 computeDirection(uint faceId, float u, float v) {
-	switch (faceId) {
-	case 0: return normalize(vec3(1, -u, -v));
-	case 1: return normalize(vec3(-1, -u, v));
-	case 2: return normalize(vec3(v, 1, u));
-	case 3: return normalize(vec3(v, -1, -u));
-	case 4: return normalize(vec3(v, -u, 1));
-	case 5: return normalize(vec3(-v, -u, -1));	
-	default: return vec3(0.0);
-	}
+    switch (faceId) {
+        case 0: return normalize(vec3( 1, -v, -u));
+        case 1: return normalize(vec3(-1, -v,  u));
+        case 2: return normalize(vec3( u,  1,  v));
+        case 3: return normalize(vec3( u, -1, -v));
+        case 4: return normalize(vec3( u, -v,  1));
+        case 5: return normalize(vec3(-u, -v, -1));
+        default: return vec3(0.0);
+    }
 }
 
-
 void main() {
-	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	vec2 pixel = gl_GlobalInvocationID.xy;
 
 	if (pixel.x >= faceSize || pixel.y >= faceSize) {
 		return;
@@ -66,7 +66,7 @@ void main() {
 
 	vec3 color = PrefilterEnvMap(roughness, R);
 
-	uint index = ((faceId * faceSize + pixel.x) * faceSize + pixel.y) * 3;
+	uint index = uint(((faceId * faceSize + pixel.y) * faceSize + pixel.x) * 3);
 
 	data[index + 0] = color.r;
 	data[index + 1] = color.g;

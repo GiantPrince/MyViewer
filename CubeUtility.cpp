@@ -12,32 +12,69 @@
 #include <fstream>
 
 
+void rgbe_to_float_vector(
+	const unsigned char* input,
+	size_t pixelCount,
+	std::vector<float>& output)
+{
+	output.resize(pixelCount * 4);
+
+	for (size_t i = 0; i < pixelCount; ++i)
+	{
+		const unsigned char* rgbe = input + i * 4;
+
+		unsigned char r = rgbe[0];
+		unsigned char g = rgbe[1];
+		unsigned char b = rgbe[2];
+		unsigned char e = rgbe[3];
+
+		float* out = &output[i * 4];
+
+		if (e == 0)
+		{
+			out[0] = 0.0f;
+			out[1] = 0.0f;
+			out[2] = 0.0f;
+			out[3] = 1.0f;
+		}
+		else
+		{
+			
+
+			float scale = std::ldexp(1.0f, int(e) - 128 - 8);
+
+			out[0] = (r + 0.5f) * scale;
+			out[1] = (g + 0.5f) * scale;
+			out[2] = (b + 0.5f) * scale;
+			out[3] = 1.0f;
+		}
+	}
+}
+
 void float_to_rgbe(const float* rgb, unsigned char* rgbe)
 {
 	float r = rgb[0];
 	float g = rgb[1];
 	float b = rgb[2];
 
-	float maxRGB = std::fmax(r, std::fmax(g, b));
+	float maxRGB = std::max(r, std::max(g, b));
 
-	if (maxRGB < 1e-32f)
-	{
+	if (maxRGB < 1e-32f) {
 		rgbe[0] = rgbe[1] = rgbe[2] = rgbe[3] = 0;
 		return;
 	}
 
 	int exp;
-	float norm = std::frexp(maxRGB, &exp);
+	std::frexp(maxRGB, &exp);  
 
-	float scale = norm * 256.0f / maxRGB;
+	float denom = std::ldexp(1.0f, exp - 8);
 
-	rgbe[0] = (unsigned char)std::min(255.0f, r * scale);
-	rgbe[1] = (unsigned char)std::min(255.0f, g * scale);
-	rgbe[2] = (unsigned char)std::min(255.0f, b * scale);
-
-	int biased_exp = exp + 128;
-	rgbe[3] = (unsigned char)std::max(0, std::min(255, biased_exp));
+	rgbe[0] = (unsigned char)std::clamp(int(rgb[0] / denom + 0.5f), 0, 255);
+	rgbe[1] = (unsigned char)std::clamp(int(rgb[1] / denom + 0.5f), 0, 255);
+	rgbe[2] = (unsigned char)std::clamp(int(rgb[2] / denom + 0.5f), 0, 255);
+	rgbe[3] = (unsigned char)(exp + 128);
 }
+
 
 
 CubeUtility::CubeUtility(RTG& rtg) : rtg_(rtg) {
@@ -298,16 +335,19 @@ void CubeUtility::process_cubemap(const std::string& input_cubemap, const std::s
 		throw std::runtime_error("Can not read cubemap from " + input_cubemap);
 	}
 
+	std::vector<float> imagedata;
+	rgbe_to_float_vector(image, tex_width* tex_height, imagedata);
+
 	assert(tex_height % 6 == 0);
 
-	for (size_t i = 0; i < tex_width * tex_height; i++) {
+	/*for (size_t i = 0; i < tex_width * tex_height; i++) {
 		size_t j = 4 * i;
 		rgbe_to_e5b9g9r9(&image[j]);
-	}
+	}*/
 
 	input_image_ = rtg_.helpers.create_cubemap(
 		VkExtent2D{ .width = static_cast<uint32_t>(tex_width), .height = static_cast<uint32_t>(tex_height) / 6 },
-		VK_FORMAT_E5B9G9R9_UFLOAT_PACK32,
+		VK_FORMAT_R32G32B32A32_SFLOAT,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -315,7 +355,7 @@ void CubeUtility::process_cubemap(const std::string& input_cubemap, const std::s
 	);
 	std::cout << tex_height << std::endl;
 
-	rtg_.helpers.transfer_to_cubemap(image, tex_width * tex_height * 4, input_image_);
+	rtg_.helpers.transfer_to_cubemap(reinterpret_cast<char *>(imagedata.data()), tex_width* tex_height * 4 * 4, input_image_);
 	stbi_image_free(image);
 
 	//create image view
@@ -449,7 +489,7 @@ void CubeUtility::process_cubemap(const std::string& input_cubemap, const std::s
 			Push push{
 				.roughness = (i + 1) / static_cast<float>(mipmap_levels - 1),
 				.faceSize = static_cast<uint32_t>(mipmap_width),
-				.numOfSamples = 1024,
+				.numOfSamples = 4096 / static_cast<uint32_t>(std::pow(2, std::min(4ULL, i - 1))),
 				.mipmapLevel = static_cast<uint32_t>(i + 1)
 			};
 
@@ -573,6 +613,7 @@ void CubeUtility::rgbe_to_e5b9g9r9(unsigned char* rgbe)
 
 	int shared_exp;
 	std::frexp(max_c, &shared_exp);
+	
 
 	int biased_exp = std::max(0, std::min(31, shared_exp + 15));
 

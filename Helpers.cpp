@@ -610,6 +610,27 @@ void Helpers::transfer_buffer_to_vector(AllocatedBuffer& buffer, std::vector<uns
 
 		VK(vkBeginCommandBuffer(transfer_command_buffer, &begin_info));
 
+		VkBufferMemoryBarrier barrier{
+			.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+			.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.buffer = buffer.handle,
+			.offset = 0,
+			.size = buffer.size
+		};
+
+		vkCmdPipelineBarrier(
+			transfer_command_buffer,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			0,
+			0, nullptr,
+			1, &barrier,
+			0, nullptr
+		);
+
 		VkBufferCopy copy_region{
 			.srcOffset = 0,
 			.dstOffset = 0,

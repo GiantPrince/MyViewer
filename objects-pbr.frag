@@ -35,7 +35,7 @@ vec3 ApproximateSpecularIBL(vec3 SpecularColor , float Roughness, vec3 N, vec3 V
 	float NoV = clamp(dot(N, V), 0, 1);
 	vec3 R = reflect(V, N);
 	vec3 PrefilteredColor = textureLod(PRE_FILTERED_ENV, R, Roughness * MAX_MIPMAP_LEVEL).rgb;
-	vec2 EnvBRDF = texture(BRDF, vec2(1.0 - Roughness, NoV)).rg;
+	vec2 EnvBRDF = texture(BRDF, vec2(Roughness, NoV)).rg;
 	return PrefilteredColor * ( SpecularColor * EnvBRDF.x + EnvBRDF.y );
 }
 
