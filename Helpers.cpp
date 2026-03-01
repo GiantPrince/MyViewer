@@ -146,7 +146,7 @@ void Helpers::destroy_image(AllocatedImage &&image) {
 	free(std::move(image.allocation));
 }
 
-Helpers::AllocatedImage Helpers::create_cubemap(VkExtent2D const& extent, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, MapFlag map)
+Helpers::AllocatedImage Helpers::create_cubemap(VkExtent2D const& extent, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, MapFlag map, uint32_t mip_levels)
 {
 	AllocatedImage image;
 	image.extent = extent;
@@ -162,7 +162,7 @@ Helpers::AllocatedImage Helpers::create_cubemap(VkExtent2D const& extent, VkForm
 			.height = extent.height,
 			.depth = 1
 		},
-		.mipLevels = 1,
+		.mipLevels = mip_levels,
 		.arrayLayers = 6,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.tiling = tiling,
@@ -354,7 +354,7 @@ void Helpers::transfer_to_image(void const *data, size_t size, AllocatedImage &t
 	
 }
 
-void Helpers::transfer_to_cubemap(void const* data, size_t size, AllocatedImage& image)
+void Helpers::transfer_to_cubemap(void const* data, size_t size, AllocatedImage& image, uint32_t mip_level)
 {
 	assert(image.handle != VK_NULL_HANDLE);
 
@@ -379,8 +379,8 @@ void Helpers::transfer_to_cubemap(void const* data, size_t size, AllocatedImage&
 			.bufferRowLength = image.extent.width,
 			.bufferImageHeight = image.extent.height,
 			.imageSubresource{
-				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-				.mipLevel = 0,
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,				
+				.mipLevel = mip_level,
 				.baseArrayLayer = i,
 				.layerCount = 1
 			},
@@ -405,7 +405,7 @@ void Helpers::transfer_to_cubemap(void const* data, size_t size, AllocatedImage&
 
 	VkImageSubresourceRange whole_image{
 		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-		.baseMipLevel = 0,
+		.baseMipLevel = mip_level,
 		.levelCount = 1,
 		.baseArrayLayer = 0,
 		.layerCount = 6

@@ -87,6 +87,14 @@ struct Viewer : RTG::Application {
 		VkDescriptorSetLayout set3_Camera = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set4_Environment = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set5_NormalMap = VK_NULL_HANDLE;
+		
+		VkDescriptorSetLayout set6_Roughness = VK_NULL_HANDLE;
+		
+		VkDescriptorSetLayout set7_Metalness = VK_NULL_HANDLE;
+		
+		VkDescriptorSetLayout set8_PreFilteredEnvironmentMap = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set9_BRDFLookupTable = VK_NULL_HANDLE;
+
 
 		struct Camera {
 			mat4 CLIP_FROM_WORLD;
@@ -125,6 +133,7 @@ struct Viewer : RTG::Application {
 		VkPipeline env_handle = VK_NULL_HANDLE;
 		VkPipeline mirror_handle = VK_NULL_HANDLE;
 		VkPipeline lambertian_env_handle = VK_NULL_HANDLE;
+		VkPipeline pbr_handle = VK_NULL_HANDLE;
 
 		void create(RTG&, VkRenderPass, uint32_t subpass);
 		void destroy(RTG&);
@@ -189,7 +198,9 @@ struct Viewer : RTG::Application {
 	std::unordered_map<std::string, uint32_t> texture_name_to_index;	
 
 	std::unordered_map<S72::color, uint32_t> texture_color_to_index;
+	std::unordered_map<float, uint32_t> texture_float_to_index;
 
+	VkSampler texture_mipmap_sampler = VK_NULL_HANDLE;
 	VkSampler texture_sampler = VK_NULL_HANDLE;
 	VkDescriptorPool texture_descriptor_pool = VK_NULL_HANDLE;
 	std::vector<VkDescriptorSet> texture_descriptors;
@@ -274,9 +285,12 @@ struct Viewer : RTG::Application {
 		enum class Type {
 			ALBEDO,
 			ENV,
-			MIRROR
+			MIRROR,
+			PBR
 		} texture_type;
 		uint32_t normal_map = 1;
+		uint32_t metalness_map = 0;
+		uint32_t roughness_map = 0;
 	};
 	std::vector<ObjectInstance> object_instances;
 		
@@ -351,6 +365,12 @@ struct Viewer : RTG::Application {
 
 	// env texture index
 	uint32_t env_texture_index = 0;
+
+	// lut texture index
+	uint32_t lut_texture_index = 0;
+
+	// max mipmap level
+	uint32_t max_mipmap_level = 1;
 	//--------------------------------------------------------------------
 	//Rendering function, uses all the resources above to queue work to draw a frame:
 

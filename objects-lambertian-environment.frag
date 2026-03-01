@@ -34,7 +34,7 @@ void main() {
 	
 	vec3 albedo = texture(TEXTURE, texCoord).rgb;
 		
-	vec3 e = texture(ENV, tangent_normal).rgb;
+	vec3 e = textureLod(ENV, tangent_normal, 0.0).rgb;
 	vec3 radiance = albedo * e;
 	
 	vec3 tonemapped_color = tonemap(radiance);

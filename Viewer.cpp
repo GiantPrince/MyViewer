@@ -13,6 +13,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <stack>
 
@@ -331,8 +332,11 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 	{
 		texture_views.reserve(textures.size());
 		for (Helpers::AllocatedImage const& image : textures) {
+			size_t index = &image - &textures[0];
 			VkImageViewCreateInfo create_info{};
 			if (image.format == VK_FORMAT_E5B9G9R9_UFLOAT_PACK32) {
+				uint32_t level_count = index == env_texture_index ? max_mipmap_level : 1;
+
 				create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 				create_info.flags = 0;
 				create_info.image = image.handle;
@@ -341,7 +345,7 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 				create_info.subresourceRange = {
 					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 					.baseMipLevel = 0,
-					.levelCount = 1,
+					.levelCount = level_count,
 					.baseArrayLayer = 0,
 					.layerCount = 6
 				};					
@@ -384,12 +388,34 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 			.compareEnable = VK_FALSE,
 			.compareOp = VK_COMPARE_OP_ALWAYS,
 			.minLod = 0.0f,
+			.maxLod = static_cast<float>(max_mipmap_level),
+			.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
+			.unnormalizedCoordinates = VK_FALSE
+		};
+
+		VK(vkCreateSampler(rtg.device, &create_info, nullptr, &texture_mipmap_sampler));
+
+		VkSamplerCreateInfo create_mipmap_info{
+			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.flags = 0,
+			.magFilter = VK_FILTER_LINEAR,
+			.minFilter = VK_FILTER_LINEAR,
+			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.mipLodBias = 0.0f,
+			.anisotropyEnable = VK_FALSE,
+			.maxAnisotropy = 0.0f,
+			.compareEnable = VK_FALSE,
+			.compareOp = VK_COMPARE_OP_ALWAYS,
+			.minLod = 0.0f,
 			.maxLod = 0.0f,
 			.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
 			.unnormalizedCoordinates = VK_FALSE
 		};
 
-		VK(vkCreateSampler(rtg.device, &create_info, nullptr, &texture_sampler));
+		VK(vkCreateSampler(rtg.device, &create_mipmap_info, nullptr, &texture_sampler));
 	}
 
 	{
@@ -432,12 +458,21 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 
 		for (Helpers::AllocatedImage& image : textures) {
 			size_t i = &image - &textures[0];
-
-			infos[i] = VkDescriptorImageInfo{
+			if (image.format == VK_FORMAT_E5B9G9R9_UFLOAT_PACK32) {
+				infos[i] = VkDescriptorImageInfo{
+				.sampler = texture_mipmap_sampler,
+				.imageView = texture_views[i],
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+				};
+			}
+			else {
+				infos[i] = VkDescriptorImageInfo{
 				.sampler = texture_sampler,
 				.imageView = texture_views[i],
 				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-			};
+				};
+			}
+			
 
 			writes[i] = VkWriteDescriptorSet{
 				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -502,6 +537,11 @@ Viewer::~Viewer() {
 	if (texture_sampler) {
 		vkDestroySampler(rtg.device, texture_sampler, nullptr);
 		texture_sampler = VK_NULL_HANDLE;
+	}
+
+	if (texture_mipmap_sampler) {
+		vkDestroySampler(rtg.device, texture_mipmap_sampler, nullptr);
+		texture_mipmap_sampler = VK_NULL_HANDLE;
 	}
 
 	for (VkImageView& view : texture_views) {
@@ -1904,6 +1944,39 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 				}
 			}
 
+			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.pbr_handle);
+
+			for (ObjectInstance const& inst : object_instances) {
+				uint32_t index = uint32_t(&inst - &object_instances[0]);
+				if (inst.texture_type == ObjectInstance::Type::PBR) {					
+					std::array<VkDescriptorSet, 8> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors.back(), texture_descriptors[inst.normal_map], texture_descriptors[inst.roughness_map], texture_descriptors[inst.metalness_map], texture_descriptors[env_texture_index], texture_descriptors[lut_texture_index]};
+
+					vkCmdBindDescriptorSets(
+						workspace.command_buffer,
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						objects_pipeline.layout,
+						2,
+						static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
+						0, nullptr
+					);
+
+					if (!rtg.configuration.indexed) {
+						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+					}
+					else {
+						vkCmdDrawIndexed(
+							workspace.command_buffer,
+							inst.vertices.count,
+							1,
+							inst.vertices.first,
+							0,
+							index
+						);
+					}
+				}
+			}
+
+
 
 			if (rtg.configuration.profile) {
 				vkCmdWriteTimestamp(workspace.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, query_pool, render_params.workspace_index * 2 + 1);
@@ -2603,6 +2676,8 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 {
 	uint32_t texture_index = 0;
 	uint32_t normal_map_index = 1;
+	uint32_t roughness_map_index = 0;
+	uint32_t metalness_map_index = 0;
 	ObjectInstance::Type texture_type = ObjectInstance::Type::ALBEDO;
 
 	if (mesh.material != nullptr) {
@@ -2629,6 +2704,41 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 			texture_index = env_texture_index;
 			texture_type = ObjectInstance::Type::MIRROR;
 		}
+		else if (std::holds_alternative<S72::Material::PBR>(mesh.material->brdf)) {
+			S72::Material::PBR pbr = std::get<S72::Material::PBR>(mesh.material->brdf);
+			texture_type = ObjectInstance::Type::PBR;
+			if (std::holds_alternative<S72::color>(pbr.albedo)) {
+				S72::color albedo_color = std::get<S72::color>(pbr.albedo);
+				texture_index = texture_color_to_index.at(albedo_color);
+			}
+			else if (std::holds_alternative<S72::Texture*>(pbr.albedo)) {
+				S72::Texture* albedo_texture = std::get<S72::Texture*>(pbr.albedo);
+				std::string texture_key = albedo_texture->src + ", format " + std::to_string(int(albedo_texture->type)) + ", type " + std::to_string(int(albedo_texture->format));
+				texture_index = texture_name_to_index.at(texture_key);
+			}
+
+			if (std::holds_alternative<float>(pbr.metalness)) {
+				float metalness = std::get<float>(pbr.metalness);
+				metalness_map_index = texture_float_to_index.at(metalness);
+			}
+			else if (std::holds_alternative<S72::Texture*>(pbr.metalness)) {
+				S72::Texture* pbr_texture = std::get<S72::Texture*>(pbr.metalness);
+				std::string texture_key = pbr_texture->src + ", format " + std::to_string(int(pbr_texture->type)) + ", type " + std::to_string(int(pbr_texture->format));
+				metalness_map_index = texture_name_to_index.at(texture_key);
+			}
+
+			if (std::holds_alternative<float>(pbr.roughness)) {
+				float roughness = std::get<float>(pbr.roughness);
+				roughness_map_index = texture_float_to_index.at(roughness);
+			}
+			else if (std::holds_alternative<S72::Texture*>(pbr.roughness)) {
+				S72::Texture* pbr_texture = std::get<S72::Texture*>(pbr.roughness);
+				std::string texture_key = pbr_texture->src + ", format " + std::to_string(int(pbr_texture->type)) + ", type " + std::to_string(int(pbr_texture->format));
+				roughness_map_index = texture_name_to_index.at(texture_key);
+			}
+			
+
+		}
 		else {
 			//throw std::runtime_error("Unsupported material type");			
 		}
@@ -2649,7 +2759,9 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 			},
 			.texture = texture_index,
 			.texture_type = texture_type,
-			.normal_map = normal_map_index
+			.normal_map = normal_map_index,
+			.metalness_map = metalness_map_index,
+			.roughness_map = roughness_map_index
 			});
 	}
 	else {
@@ -2662,7 +2774,9 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 			},
 			.texture = texture_index,
 			.texture_type = texture_type,
-			.normal_map = normal_map_index
+			.normal_map = normal_map_index,
+			.metalness_map = metalness_map_index,
+			.roughness_map = roughness_map_index
 			});
 	}
 	
@@ -2695,10 +2809,11 @@ void Viewer::load_textures() {
 	));
 	rtg.helpers.transfer_to_image(&default_normal_map, 16, textures.back());
 
-
+	
 
 	for (const auto& [name, texture] : rtg.scene.textures) {
 		if (texture.type == S72::Texture::Type::cube) {
+			// check all mipmap images
 			int tex_width, tex_height, tex_channels;
 			stbi_set_flip_vertically_on_load(false);
 			unsigned char* image = stbi_load(texture.path.c_str(), &tex_width, &tex_height, &tex_channels, 4);
@@ -2715,18 +2830,86 @@ void Viewer::load_textures() {
 
 			texture_name_to_index[name] = static_cast<uint32_t>(textures.size());
 			env_texture_index = static_cast<uint32_t>(textures.size());
-		
+			uint32_t mipmap_levels = static_cast<uint32_t>(std::log2(std::min(tex_width, tex_height / 6)) + 1) - 1;
+			max_mipmap_level = mipmap_levels;
 			textures.emplace_back(rtg.helpers.create_cubemap(
 				VkExtent2D{ .width = static_cast<uint32_t>(tex_width), .height = static_cast<uint32_t>(tex_height) / 6 },
 				VK_FORMAT_E5B9G9R9_UFLOAT_PACK32,
 				VK_IMAGE_TILING_OPTIMAL,
 				VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-				Helpers::Unmapped
+				Helpers::Unmapped,
+				mipmap_levels
 			));
 
-			rtg.helpers.transfer_to_cubemap(image, tex_width * tex_height * 4, textures.back());
+			rtg.helpers.transfer_to_cubemap(image, tex_width * tex_height * 4, textures.back(), 0);
 			stbi_image_free(image);
+
+			int original_width = textures.back().extent.width;
+			int original_height = textures.back().extent.height;
+			for (uint32_t mipmap_level = 1; mipmap_level < mipmap_levels; mipmap_level++) {
+				std::string path = texture.path.substr(0, texture.path.size() - 3) + "my." + std::to_string(mipmap_level) + ".png";
+				stbi_set_flip_vertically_on_load(false);
+				image = stbi_load(path.c_str(), &tex_width, &tex_height, &tex_channels, 4);
+				if (image == nullptr) {
+					throw std::runtime_error("Failed to load texture image: " + path);
+				}
+				assert(tex_height % 6 == 0);
+				for (size_t i = 0; i < tex_width * tex_height; i++) {
+					size_t j = 4 * i;
+					rgbe_to_e5b9g9r9(&image[j]);
+				}
+				if (textures.back().extent.width > 1)
+					textures.back().extent.width /= 2;
+				if (textures.back().extent.height > 1) 
+					textures.back().extent.height /= 2;
+
+				
+				rtg.helpers.transfer_to_cubemap(image, tex_width * tex_height * 4, textures.back(), mipmap_level);
+				stbi_image_free(image);
+			}
+
+			textures.back().extent.width = original_width;
+			textures.back().extent.height = original_height;
+
+
+			std::string lut_path = texture.path.substr(0, texture.path.size() - 4) + ".my.lut";
+			std::ifstream lut(lut_path, std::ios::binary);
+			if (!lut) {
+				throw std::runtime_error("failed to open lut file " + lut_path);
+			}
+
+			int tex_width_i, tex_height_i;
+			lut.read(reinterpret_cast<char*>(&tex_width_i), sizeof(tex_width_i));
+			lut.read(reinterpret_cast<char*>(&tex_height_i), sizeof(tex_height_i));
+			tex_width = static_cast<int>(tex_width_i);
+			tex_height = static_cast<int>(tex_height_i);
+
+			std::vector<float> lut_binary(tex_height * tex_width * 2);
+			lut.read(reinterpret_cast<char*>(lut_binary.data()), lut_binary.size() * sizeof(float));
+
+			//lut >> tex_width;
+			//lut >> tex_height;			
+			//
+			//std::vector<unsigned char> lut_binary(tex_height * tex_width * 8);
+			////std::vector<float> lut_binary(tex_height * tex_width * 2);
+			////for (auto& f : lut_binary) lut >> f;
+			//lut.read(reinterpret_cast<char*>(lut_binary.data()), lut_binary.size() * sizeof(char));
+			std::cout << *(reinterpret_cast<float*>(lut_binary.data())) << std::endl;
+			lut.close();
+
+			lut_texture_index = static_cast<uint32_t>(textures.size());
+
+			textures.emplace_back(rtg.helpers.create_image(
+				VkExtent2D{ .width = static_cast<uint32_t>(tex_width), .height = static_cast<uint32_t>(tex_height) },
+				VK_FORMAT_R32G32_SFLOAT,
+				VK_IMAGE_TILING_OPTIMAL,
+				VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				Helpers::Unmapped				
+			));
+
+			rtg.helpers.transfer_to_image(lut_binary.data(), lut_binary.size() * sizeof(float), textures.back());
 
 		}
 		else {
@@ -2738,9 +2921,28 @@ void Viewer::load_textures() {
 			}
 
 			VkFormat format = VK_FORMAT_UNDEFINED;
-			if (tex_channels == 1) {
-				continue;
+			/*if (tex_channels == 1) {
+				if (texture.format == S72::Texture::Format::linear) {
+					format = VK_FORMAT_R32_SFLOAT;
+				}
+				else if (texture.format == S72::Texture::Format::srgb) {
+					format = VK_FORMAT_R8G8B8A8_SRGB;
+				}
+				else {
+					throw std::runtime_error("Unsupported texture format");
+				}
 			}
+			else {*/
+				if (texture.format == S72::Texture::Format::linear) {
+					format = VK_FORMAT_R8G8B8A8_UNORM;
+				}
+				else if (texture.format == S72::Texture::Format::srgb) {
+					format = VK_FORMAT_R8G8B8A8_SRGB;
+				}
+				else {
+					throw std::runtime_error("Unsupported texture format");
+				}
+			//}
 			/*if (tex_channels == 3) {
 				if (texture.format == S72::Texture::Format::linear) {
 					format = VK_FORMAT_R8G8B8_UNORM;
@@ -2753,15 +2955,7 @@ void Viewer::load_textures() {
 				}
 			}
 			else if (tex_channels == 4) {*/
-				if (texture.format == S72::Texture::Format::linear) {
-					format = VK_FORMAT_R8G8B8A8_UNORM;
-				}
-				else if (texture.format == S72::Texture::Format::srgb) {
-					format = VK_FORMAT_R8G8B8A8_SRGB;
-				}
-				else {
-					throw std::runtime_error("Unsupported texture format");
-				}
+			
 			/*}
 			else {
 				throw std::runtime_error("Unsupported texture format");
@@ -2817,13 +3011,69 @@ void Viewer::load_textures() {
 				throw std::runtime_error("Unsupported material type");
 			}
 		}
+		else if (std::holds_alternative<S72::Material::PBR>(material.brdf)) {
+			lambertian = true;
+			S72::Material::PBR pbr =
+				std::get<S72::Material::PBR>(material.brdf);
+			if (std::holds_alternative<S72::color>(pbr.albedo)) {
+				S72::color albedo_color = std::get<S72::color>(pbr.albedo);
+				if (texture_color_to_index.count(albedo_color) == 0) {
+					float albedo[] = { albedo_color.r, albedo_color.g, albedo_color.b, 1.0f };
+					textures.emplace_back(rtg.helpers.create_image(
+						VkExtent2D{ .width = 1, .height = 1 },
+						VK_FORMAT_R32G32B32A32_SFLOAT,
+						VK_IMAGE_TILING_OPTIMAL,
+						VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+						Helpers::Unmapped
+					));
+
+					rtg.helpers.transfer_to_image(albedo, 16, textures.back());
+					texture_color_to_index[albedo_color] = static_cast<uint32_t>(textures.size() - 1);
+				}
+			}
+			if (std::holds_alternative<float>(pbr.metalness)) {
+				float metalness = std::get<float>(pbr.metalness);
+				if (texture_float_to_index.count(metalness) == 0) {
+					float albedo[] = { metalness, 0.0f, 0.0f, 0.0f };
+					textures.emplace_back(rtg.helpers.create_image(
+						VkExtent2D{ .width = 1, .height = 1 },
+						VK_FORMAT_R32G32B32A32_SFLOAT,
+						VK_IMAGE_TILING_OPTIMAL,
+						VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+						Helpers::Unmapped
+					));
+
+					rtg.helpers.transfer_to_image(albedo, 16, textures.back());
+					texture_float_to_index[metalness] = static_cast<uint32_t>(textures.size() - 1);
+				}
+			}
+			if (std::holds_alternative<float>(pbr.roughness)) {
+				float roughness = std::get<float>(pbr.roughness);
+				if (texture_float_to_index.count(roughness) == 0) {
+					float albedo[] = { roughness, 0.0f, 0.0f, 0.0f };
+					textures.emplace_back(rtg.helpers.create_image(
+						VkExtent2D{ .width = 1, .height = 1 },
+						VK_FORMAT_R32G32B32A32_SFLOAT,
+						VK_IMAGE_TILING_OPTIMAL,
+						VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+						Helpers::Unmapped
+					));
+
+					rtg.helpers.transfer_to_image(albedo, 16, textures.back());
+					texture_float_to_index[roughness] = static_cast<uint32_t>(textures.size() - 1);
+				}
+			}
+		}
 	}
 
 	if (lambertian && !rtg.scene.environments.empty()) {
 		int tex_width, tex_height, tex_channels;
 		stbi_set_flip_vertically_on_load(false);
 		auto path = rtg.scene.environments.begin()->second.radiance->path;
-		std::string lambertian_env_path = path.substr(0, path.size() - 3) + "lambertian.png";
+		std::string lambertian_env_path = path.substr(0, path.size() - 3) + "lambertian.my.png";
 		unsigned char* image = stbi_load(lambertian_env_path.c_str(), &tex_width, &tex_height, &tex_channels, 4);
 		if (image == nullptr) {
 			throw std::runtime_error("Failed to load texture image: " + lambertian_env_path);

@@ -88,8 +88,8 @@ struct Texel {
 
 vec3 computeDirection(size_t face, float u, float v) {
 	switch (face) {
-	case 0: return normalize(vec3(1, u, -v));
-	case 1: return normalize(vec3(-1, u, v));
+	case 0: return normalize(vec3(1, -u, -v));
+	case 1: return normalize(vec3(-1, -u, v));
 	case 2: return normalize(vec3(v, 1, u));
 	case 3: return normalize(vec3(v, -1, -u));
 	case 4: return normalize(vec3(v, -u, 1));

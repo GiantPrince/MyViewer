@@ -60,7 +60,8 @@ const objects_shaders = [
 	maek.GLSLC('objects.frag'),
 	maek.GLSLC('objects-environment.frag'),
 	maek.GLSLC('objects-mirror.frag'),
-	maek.GLSLC('objects-lambertian-environment.frag')
+	maek.GLSLC('objects-lambertian-environment.frag'),
+	maek.GLSLC('objects-pbr.frag')
 ];
 main_objs.push( maek.CPP('Tutorial-ObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 

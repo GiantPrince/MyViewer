@@ -31,7 +31,7 @@ void main() {
 	vec3 tangent_normal = mat3(t, bt, n) * nm;
 	
 	
-	vec3 albedo = texture(TEXTURE, tangent_normal).rgb;
+	vec3 albedo = textureLod(TEXTURE, tangent_normal, 0.0).rgb;
 	vec3 tonemapped_color = tonemap(albedo);
 	outColor = vec4(tonemapped_color, 1.0);	
 	

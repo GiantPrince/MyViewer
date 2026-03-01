@@ -258,9 +258,12 @@ void CubeUtility::process_cubemap(const std::string& input_cubemap, const std::s
 		std::ofstream out(output_cubemap, std::ios::binary);
 		if (!out)
 			throw std::runtime_error("failed to open lut file " + output_cubemap);
-		
-		out.write(reinterpret_cast<const char*>(data.data()), data.size() * sizeof(unsigned char));
+				
+		out.write(reinterpret_cast<const char*>(&width), sizeof(width));
+		out.write(reinterpret_cast<const char*>(&height), sizeof(height));
+		out.write(reinterpret_cast<const char*>(data.data()), data.size() * sizeof(char));
 
+		std::cout << *(reinterpret_cast<float*>(data.data())) << std::endl;
 		out.close();
 		
 
@@ -288,6 +291,7 @@ void CubeUtility::process_cubemap(const std::string& input_cubemap, const std::s
 
 	}
 	int tex_width, tex_height, tex_channels;
+	stbi_set_flip_vertically_on_load(false);
 	unsigned char* image = stbi_load(input_cubemap.c_str(), &tex_width, &tex_height, &tex_channels, 4);
 
 	if (image == nullptr) {

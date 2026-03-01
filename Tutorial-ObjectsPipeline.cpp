@@ -24,13 +24,18 @@ static uint32_t lambertian_env_frag_code[]
 #include "spv/objects-lambertian-environment.frag.inl"
 ;
 
+static uint32_t pbr_code[]
+#include "spv/objects-pbr.frag.inl"
+;
+
 void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_t subpass) {
 	VkShaderModule vert_module = rtg.helpers.create_shader_module(vert_code);
 	VkShaderModule frag_module = rtg.helpers.create_shader_module(frag_code);
 	VkShaderModule env_frag_module = rtg.helpers.create_shader_module(env_frag_code);
 	VkShaderModule mirror_frag_module = rtg.helpers.create_shader_module(mirror_frag_code);
 	VkShaderModule lambertian_env_frag_module = rtg.helpers.create_shader_module(lambertian_env_frag_code);
-	
+	VkShaderModule pbr_frag_module = rtg.helpers.create_shader_module(pbr_code);
+
 	{
 		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
 			VkDescriptorSetLayoutBinding{
@@ -146,6 +151,85 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 
 	}
 
+	{
+		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
+			VkDescriptorSetLayoutBinding{
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.descriptorCount = 1,
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+			}
+		};
+
+		VkDescriptorSetLayoutCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = uint32_t(bindings.size()),
+			.pBindings = bindings.data()
+		};
+
+		VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set6_Roughness));
+
+	}
+
+	{
+		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
+			VkDescriptorSetLayoutBinding{
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.descriptorCount = 1,
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+			}
+		};
+
+		VkDescriptorSetLayoutCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = uint32_t(bindings.size()),
+			.pBindings = bindings.data()
+		};
+
+		VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set7_Metalness));
+
+	}
+
+	{
+		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
+			VkDescriptorSetLayoutBinding{
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.descriptorCount = 1,
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+			}
+		};
+
+		VkDescriptorSetLayoutCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = uint32_t(bindings.size()),
+			.pBindings = bindings.data()
+		};
+		
+		VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set8_PreFilteredEnvironmentMap));
+
+	}
+
+	{
+		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
+			VkDescriptorSetLayoutBinding{
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.descriptorCount = 1,
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+			}
+		};
+
+		VkDescriptorSetLayoutCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = uint32_t(bindings.size()),
+			.pBindings = bindings.data()
+		};		
+		VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set9_BRDFLookupTable));
+
+	}
+
 	
 
 	{
@@ -155,13 +239,17 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 			.size = sizeof(Push)
 		};
 
-		std::array<VkDescriptorSetLayout, 6> layouts{
+		std::array<VkDescriptorSetLayout, 10> layouts{
 			set0_World,
 			set1_Transforms,
 			set2_TEXTURE,
 			set3_Camera,
 			set4_Environment,
-			set5_NormalMap
+			set5_NormalMap,
+			set6_Roughness,
+			set7_Metalness,
+			set8_PreFilteredEnvironmentMap,
+			set9_BRDFLookupTable
 		};
 
 		VkPipelineLayoutCreateInfo create_info{
@@ -232,6 +320,21 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 				.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
 				.module = lambertian_env_frag_module,
+				.pName = "main"
+			}
+		};
+
+		std::array <VkPipelineShaderStageCreateInfo, 2> pbr_stages{
+			VkPipelineShaderStageCreateInfo{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.stage = VK_SHADER_STAGE_VERTEX_BIT,
+				.module = vert_module,
+				.pName = "main"
+			},
+			VkPipelineShaderStageCreateInfo{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.module = pbr_frag_module,
 				.pName = "main"
 			}
 		};
@@ -335,11 +438,17 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 		create_info.pStages = lambertian_env_stages.data();
 		VK(vkCreateGraphicsPipelines(rtg.device, VK_NULL_HANDLE, 1, &create_info, nullptr, &lambertian_env_handle));
 
+		create_info.stageCount = static_cast<uint32_t>(pbr_stages.size());
+		create_info.pStages = pbr_stages.data();
+		VK(vkCreateGraphicsPipelines(rtg.device, VK_NULL_HANDLE, 1, &create_info, nullptr, &pbr_handle));
+
+
 		vkDestroyShaderModule(rtg.device, vert_module, nullptr);
 		vkDestroyShaderModule(rtg.device, frag_module, nullptr);
 		vkDestroyShaderModule(rtg.device, env_frag_module, nullptr);
 		vkDestroyShaderModule(rtg.device, mirror_frag_module, nullptr);
 		vkDestroyShaderModule(rtg.device, lambertian_env_frag_module, nullptr);
+		vkDestroyShaderModule(rtg.device, pbr_frag_module, nullptr);
 
 	}
 }
@@ -375,9 +484,34 @@ void Viewer::ObjectsPipeline::destroy(RTG& rtg) {
 		mirror_handle = VK_NULL_HANDLE;
 	}
 
+	if (pbr_handle != VK_NULL_HANDLE) {
+		vkDestroyPipeline(rtg.device, pbr_handle, nullptr);
+		pbr_handle = VK_NULL_HANDLE;
+	}
+
 	if (set3_Camera != VK_NULL_HANDLE) {
 		vkDestroyDescriptorSetLayout(rtg.device, set3_Camera, nullptr);
 		set3_Camera = VK_NULL_HANDLE;
+	}
+
+	if (set6_Roughness != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set6_Roughness, nullptr);
+		set6_Roughness = VK_NULL_HANDLE;
+	}
+
+	if (set7_Metalness != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set7_Metalness, nullptr);
+		set7_Metalness = VK_NULL_HANDLE;
+	}
+
+	if (set8_PreFilteredEnvironmentMap != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set8_PreFilteredEnvironmentMap, nullptr);
+		set8_PreFilteredEnvironmentMap = VK_NULL_HANDLE;
+	}
+
+	if (set9_BRDFLookupTable != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set9_BRDFLookupTable, nullptr);
+		set9_BRDFLookupTable = VK_NULL_HANDLE;
 	}
 
 	if (set4_Environment != VK_NULL_HANDLE) {
