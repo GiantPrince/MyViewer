@@ -378,7 +378,7 @@ void CubeUtility::process_cubemap(const std::string& input_cubemap, const std::s
 	}
 
 	size_t mipmap_levels = static_cast<size_t>(std::log2(std::min(tex_width, tex_height / 6)) + 1);
-
+	mipmap_levels = std::min(6ULL, mipmap_levels);
 	{
 		output_images_.reserve(mipmap_levels);
 		int mipmap_width = tex_width / 2;
@@ -489,7 +489,7 @@ void CubeUtility::process_cubemap(const std::string& input_cubemap, const std::s
 			Push push{
 				.roughness = (i + 1) / static_cast<float>(mipmap_levels - 1),
 				.faceSize = static_cast<uint32_t>(mipmap_width),
-				.numOfSamples = 4096 / static_cast<uint32_t>(std::pow(2, std::min(4ULL, i - 1))),
+				.numOfSamples = 4096,
 				.mipmapLevel = static_cast<uint32_t>(i + 1)
 			};
 

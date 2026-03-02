@@ -1328,20 +1328,17 @@ void Viewer::rgbe_to_e5b9g9r9(unsigned char *rgbe)
 	uint32_t r = rgbe[0];
 		
 	float scale = std::ldexp(1.0f, e - 128 - 8);
-	float fr = r * scale;
-	float fg = g * scale;
-	float fb = b * scale;
-
-	// Find max for shared exponent
+	float fr = (r + 0.5f) * scale;
+	float fg = (g + 0.5f) * scale;
+	float fb = (b + 0.5f) * scale;
+	
 	float max_c = std::max(fr, std::max(fg, fb));
 
 	int shared_exp;
 	std::frexp(max_c, &shared_exp);
-
-	// Clamp exponent to E5 range (Bias 15)
+	
 	int biased_exp = std::max(0, std::min(31, shared_exp + 15));
-
-	// Calculate 9-bit mantissas
+	
 	float denom = std::ldexp(1.0f, biased_exp - 15 - 9);
 	uint32_t r9 = (uint32_t)std::min(511.0f, std::round(fr / denom));
 	uint32_t g9 = (uint32_t)std::min(511.0f, std::round(fg / denom));
@@ -2830,7 +2827,7 @@ void Viewer::load_textures() {
 
 			texture_name_to_index[name] = static_cast<uint32_t>(textures.size());
 			env_texture_index = static_cast<uint32_t>(textures.size());
-			uint32_t mipmap_levels = 6;//static_cast<uint32_t>(std::log2(std::min(tex_width, tex_height / 6)) + 1) - 1;
+			uint32_t mipmap_levels = std::min(6u, static_cast<uint32_t>(std::log2(std::min(tex_width, tex_height / 6)) + 1) - 1);
 			max_mipmap_level = mipmap_levels;
 			textures.emplace_back(rtg.helpers.create_cubemap(
 				VkExtent2D{ .width = static_cast<uint32_t>(tex_width), .height = static_cast<uint32_t>(tex_height) / 6 },
@@ -2873,7 +2870,7 @@ void Viewer::load_textures() {
 			textures.back().extent.height = original_height;
 
 
-			std::string lut_path = texture.path.substr(0, texture.path.size() - 4) + ".my.lut";
+			std::string lut_path = texture.path.substr(0, texture.path.size() - 4) + ".lut";
 			std::ifstream lut(lut_path, std::ios::binary);
 			if (!lut) {
 				throw std::runtime_error("failed to open lut file " + lut_path);
