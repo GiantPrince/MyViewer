@@ -95,6 +95,30 @@ struct Viewer : RTG::Application {
 		VkDescriptorSetLayout set8_PreFilteredEnvironmentMap = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set9_BRDFLookupTable = VK_NULL_HANDLE;
 
+		VkDescriptorSetLayout set10_Light = VK_NULL_HANDLE;
+
+		struct Light {
+			struct { float x, y, z; } direction;
+			float angle;
+
+			struct { float x, y, z; } position;
+			float radius;
+
+			struct { float r, g, b; } strength;
+			float limit;
+
+			float fov;
+			float blend;
+			enum class Type : uint32_t {
+				SUN = 0,
+				SPHERE = 1,
+				SPOT = 2
+			} type;
+			//uint32_t type;
+			uint32_t padding_;				
+		};
+		
+		static_assert(sizeof(Light) == 4 * 4 * 4, "Light is the expected size.");
 
 		struct Camera {
 			mat4 CLIP_FROM_WORLD;
@@ -123,6 +147,7 @@ struct Viewer : RTG::Application {
 		struct Push {
 			float exposure;
 			int tone_operator;
+			int light_count;
 		};
 
 		VkPipelineLayout layout = VK_NULL_HANDLE;
@@ -167,6 +192,13 @@ struct Viewer : RTG::Application {
 		Helpers::AllocatedBuffer Transforms_src;
 		Helpers::AllocatedBuffer Transforms;
 		VkDescriptorSet Transforms_descriptors;
+
+		// Sun data
+		Helpers::AllocatedBuffer Lights_src;
+		Helpers::AllocatedBuffer Lights;
+		VkDescriptorSet Lights_descriptors;
+
+
 
 		bool ready_for_query = false;
 	};
@@ -293,6 +325,8 @@ struct Viewer : RTG::Application {
 		uint32_t roughness_map = 0;
 	};
 	std::vector<ObjectInstance> object_instances;
+
+	std::vector<ObjectsPipeline::Light> lights;
 		
 	ObjectsPipeline::World world;
 

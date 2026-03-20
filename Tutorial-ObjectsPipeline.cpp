@@ -230,6 +230,25 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 
 	}
 
+	{
+		std::array<VkDescriptorSetLayoutBinding, 1> bindings{
+			VkDescriptorSetLayoutBinding{
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+				.descriptorCount = 1,
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+			}
+		};
+
+		VkDescriptorSetLayoutCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = uint32_t(bindings.size()),
+			.pBindings = bindings.data()
+		};
+		VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set10_Light));
+
+	}
+
 	
 
 	{
@@ -239,7 +258,7 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 			.size = sizeof(Push)
 		};
 
-		std::array<VkDescriptorSetLayout, 10> layouts{
+		std::array<VkDescriptorSetLayout, 11> layouts{
 			set0_World,
 			set1_Transforms,
 			set2_TEXTURE,
@@ -249,7 +268,8 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 			set6_Roughness,
 			set7_Metalness,
 			set8_PreFilteredEnvironmentMap,
-			set9_BRDFLookupTable
+			set9_BRDFLookupTable,
+			set10_Light
 		};
 
 		VkPipelineLayoutCreateInfo create_info{
@@ -274,7 +294,7 @@ void Viewer::ObjectsPipeline::create(RTG& rtg, VkRenderPass render_pass, uint32_
 			VkPipelineShaderStageCreateInfo{
 				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 				.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-				.module = frag_module,
+				.module = lambertian_env_frag_module,
 				.pName = "main"
 			}
 		};
@@ -532,5 +552,10 @@ void Viewer::ObjectsPipeline::destroy(RTG& rtg) {
 	if (set0_World != VK_NULL_HANDLE) {
 		vkDestroyDescriptorSetLayout(rtg.device, set0_World, nullptr);
 		set0_World = VK_NULL_HANDLE;
+	}
+
+	if (set10_Light != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set10_Light, nullptr);
+		set10_Light = VK_NULL_HANDLE;
 	}
 }

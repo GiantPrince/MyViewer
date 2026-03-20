@@ -130,14 +130,14 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 			},
 			VkDescriptorPoolSize{
 				.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-				.descriptorCount = 1 * per_workspace
+				.descriptorCount = 2 * per_workspace
 			}
 		};
 
 		VkDescriptorPoolCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			.flags = 0,
-			.maxSets = per_workspace * 3,
+			.maxSets = per_workspace * 4,
 			.poolSizeCount = static_cast<uint32_t>(pool_sizes.size()),
 			.pPoolSizes = pool_sizes.data()
 		};
@@ -220,6 +220,18 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 			};
 
 			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Transforms_descriptors));
+		}
+
+		{
+			VkDescriptorSetAllocateInfo alloc_info{
+				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+				.descriptorPool = descriptor_pool,
+				.descriptorSetCount = 1,
+				.pSetLayouts = &objects_pipeline.set10_Light
+			};
+
+			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Lights_descriptors));
+
 		}
 
 		{
@@ -491,6 +503,16 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 
 	}
 
+	{
+		// light descriptor set:
+		VkDescriptorSetAllocateInfo alloc_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+			.descriptorPool = texture_descriptor_pool,
+			.descriptorSetCount = 1,
+			.pSetLayouts = &objects_pipeline.set10_Light
+		};
+	}
+
 	// camera
 	if (rtg.configuration.camera_name != "") {
 		camera_mode = CameraMode::Scene;
@@ -601,6 +623,14 @@ Viewer::~Viewer() {
 
 		if (workspace.World.handle != VK_NULL_HANDLE) {
 			rtg.helpers.destroy_buffer(std::move(workspace.World));
+		}
+
+		if (workspace.Lights_src.handle != VK_NULL_HANDLE) {
+			rtg.helpers.destroy_buffer(std::move(workspace.Lights_src));
+		}
+
+		if (workspace.Lights.handle != VK_NULL_HANDLE) {
+			rtg.helpers.destroy_buffer(std::move(workspace.Lights));
 		}
 	}
 
@@ -1418,9 +1448,9 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 		}
 		else {
 			workspace.ready_for_query = true;
-		}		
+		}
 	}
-	
+
 	// reset the command buffer
 	VK(vkResetCommandBuffer(workspace.command_buffer, 0));
 
@@ -1533,28 +1563,27 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 		vkCmdCopyBuffer(workspace.command_buffer, workspace.World_src.handle, workspace.World.handle, 1, &copy_region);
 	}
 
-	if (!object_instances.empty()) {
-		// realloc buffers if needed
-		size_t needed_bytes = object_instances.size() * sizeof(ObjectsPipeline::Transform);
-		if (workspace.Transforms_src.handle == VK_NULL_HANDLE || workspace.Transforms_src.size < needed_bytes) {
-			size_t new_bytes = (needed_bytes + 4096) / 4096 * 4096;
+	if (!lights.empty()) {
+		size_t lights_needed_bytes = lights.size() * sizeof(ObjectsPipeline::Light);
+		if (workspace.Lights_src.handle == VK_NULL_HANDLE || workspace.Lights_src.size < lights_needed_bytes) {
+			size_t new_bytes = (lights_needed_bytes + 4096) / 4096 * 4096;
 
-			if (workspace.Transforms_src.handle != VK_NULL_HANDLE) {
-				rtg.helpers.destroy_buffer(std::move(workspace.Transforms_src));
+			if (workspace.Lights_src.handle != VK_NULL_HANDLE) {
+				rtg.helpers.destroy_buffer(std::move(workspace.Lights_src));
 			}
-			if (workspace.Transforms.handle != VK_NULL_HANDLE) {
-				rtg.helpers.destroy_buffer(std::move(workspace.Transforms));
+			if (workspace.Lights.handle != VK_NULL_HANDLE) {
+				rtg.helpers.destroy_buffer(std::move(workspace.Lights));
 			}
 
 
-			workspace.Transforms_src = rtg.helpers.create_buffer(
+			workspace.Lights_src = rtg.helpers.create_buffer(
 				new_bytes,
 				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 				Helpers::Mapped
 			);
 
-			workspace.Transforms = rtg.helpers.create_buffer(
+			workspace.Lights = rtg.helpers.create_buffer(
 				new_bytes,
 				VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
 				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -1562,21 +1591,21 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			);
 
 			// Update Descriptor Set
-			VkDescriptorBufferInfo Transforms_info{
-				.buffer = workspace.Transforms.handle,
+			VkDescriptorBufferInfo Lights_info{
+				.buffer = workspace.Lights.handle,
 				.offset = 0,
-				.range = workspace.Transforms.size
+				.range = workspace.Lights.size
 			};
 
 			std::array<VkWriteDescriptorSet, 1> writes{
 				VkWriteDescriptorSet{
 					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-					.dstSet = workspace.Transforms_descriptors,
+					.dstSet = workspace.Lights_descriptors,
 					.dstBinding = 0,
 					.dstArrayElement = 0,
 					.descriptorCount = 1,
 					.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-					.pBufferInfo = &Transforms_info
+					.pBufferInfo = &Lights_info
 				}
 			};
 
@@ -1586,443 +1615,534 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 				writes.data(),
 				0, nullptr
 			);
-			std::cout << "Re-allocated object Transforms buffers to " << new_bytes << std::endl;
+			std::cout << "Re-allocated object Lights buffers to " << new_bytes << std::endl;
 
 		}
 
-		assert(workspace.Transforms_src.size == workspace.Transforms.size);
-		assert(workspace.Transforms_src.size >= needed_bytes);
+		if (!object_instances.empty()) {
+			// realloc buffers if needed
+			size_t needed_bytes = object_instances.size() * sizeof(ObjectsPipeline::Transform);
+			if (workspace.Transforms_src.handle == VK_NULL_HANDLE || workspace.Transforms_src.size < needed_bytes) {
+				size_t new_bytes = (needed_bytes + 4096) / 4096 * 4096;
 
-		{
-			assert(workspace.Transforms_src.allocation.mapped);
-			ObjectsPipeline::Transform* out = reinterpret_cast<ObjectsPipeline::Transform*>(workspace.Transforms_src.allocation.data());
-			for (ObjectInstance& inst : object_instances) {
-				inst.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * inst.transform.WORLD_FROM_LOCAL;
-				*out = inst.transform;
-				++out;
+				if (workspace.Transforms_src.handle != VK_NULL_HANDLE) {
+					rtg.helpers.destroy_buffer(std::move(workspace.Transforms_src));
+				}
+				if (workspace.Transforms.handle != VK_NULL_HANDLE) {
+					rtg.helpers.destroy_buffer(std::move(workspace.Transforms));
+				}
+
+
+				workspace.Transforms_src = rtg.helpers.create_buffer(
+					new_bytes,
+					VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+					VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+					Helpers::Mapped
+				);
+
+				workspace.Transforms = rtg.helpers.create_buffer(
+					new_bytes,
+					VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+					VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+					Helpers::Unmapped
+				);
+
+				// Update Descriptor Set
+				VkDescriptorBufferInfo Transforms_info{
+					.buffer = workspace.Transforms.handle,
+					.offset = 0,
+					.range = workspace.Transforms.size
+				};
+
+				std::array<VkWriteDescriptorSet, 1> writes{
+					VkWriteDescriptorSet{
+						.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+						.dstSet = workspace.Transforms_descriptors,
+						.dstBinding = 0,
+						.dstArrayElement = 0,
+						.descriptorCount = 1,
+						.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+						.pBufferInfo = &Transforms_info
+					}
+				};
+
+				vkUpdateDescriptorSets(
+					rtg.device,
+					uint32_t(writes.size()),
+					writes.data(),
+					0, nullptr
+				);
+				std::cout << "Re-allocated object Transforms buffers to " << new_bytes << std::endl;
+
 			}
-		}
-		VkBufferCopy copy_region{
-			.srcOffset = 0,
-			.dstOffset = 0,
-			.size = needed_bytes
-		};
 
-		vkCmdCopyBuffer(workspace.command_buffer, workspace.Transforms_src.handle, workspace.Transforms.handle, 1, &copy_region);
+			// suns data
+			{
+				assert(workspace.Lights_src.size == workspace.Lights.size);
+				assert(workspace.Lights_src.size >= needed_bytes);
+				assert(workspace.Lights_src.allocation.mapped);
+				
+				memcpy(workspace.Lights_src.allocation.data(), lights.data(), lights_needed_bytes);
 
+				VkBufferCopy copy_region{
+					.srcOffset = 0,
+					.dstOffset = 0,
+					.size = lights_needed_bytes
+				};
 
-		{
-			ObjectsPipeline::Camera camera{
-				.CLIP_FROM_WORLD = CLIP_FROM_WORLD,
-				.EYE = get_current_camera_position()
-			};
-			assert(workspace.Camera_src.size == sizeof(camera));
+				vkCmdCopyBuffer(workspace.command_buffer, workspace.Lights_src.handle, workspace.Lights.handle, 1, &copy_region);
+			}
 
-			memcpy(workspace.Camera_src.allocation.data(), &camera, sizeof(camera));
-			assert(workspace.Camera_src.size == workspace.Camera.size);
+			assert(workspace.Transforms_src.size == workspace.Transforms.size);
+			assert(workspace.Transforms_src.size >= needed_bytes);
 
-			VkBufferCopy camera_copy_region{
+			{
+				assert(workspace.Transforms_src.allocation.mapped);
+				ObjectsPipeline::Transform* out = reinterpret_cast<ObjectsPipeline::Transform*>(workspace.Transforms_src.allocation.data());
+				for (ObjectInstance& inst : object_instances) {
+					inst.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * inst.transform.WORLD_FROM_LOCAL;
+					*out = inst.transform;
+					++out;
+				}
+			}
+			VkBufferCopy copy_region{
 				.srcOffset = 0,
 				.dstOffset = 0,
-				.size = workspace.Camera_src.size
+				.size = needed_bytes
 			};
-			vkCmdCopyBuffer(workspace.command_buffer, workspace.Camera_src.handle, workspace.Camera.handle, 1, &camera_copy_region);
+
+			vkCmdCopyBuffer(workspace.command_buffer, workspace.Transforms_src.handle, workspace.Transforms.handle, 1, &copy_region);
+
+
+			{
+				ObjectsPipeline::Camera camera{
+					.CLIP_FROM_WORLD = CLIP_FROM_WORLD,
+					.EYE = get_current_camera_position()
+				};
+				assert(workspace.Camera_src.size == sizeof(camera));
+
+				memcpy(workspace.Camera_src.allocation.data(), &camera, sizeof(camera));
+				assert(workspace.Camera_src.size == workspace.Camera.size);
+
+				VkBufferCopy camera_copy_region{
+					.srcOffset = 0,
+					.dstOffset = 0,
+					.size = workspace.Camera_src.size
+				};
+				vkCmdCopyBuffer(workspace.command_buffer, workspace.Camera_src.handle, workspace.Camera.handle, 1, &camera_copy_region);
+			}
+			{
+				VkMemoryBarrier memory_barrier{
+					.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+					.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+					.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT
+				};
+
+				vkCmdPipelineBarrier(
+					workspace.command_buffer,
+					VK_PIPELINE_STAGE_TRANSFER_BIT,
+					VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+					0,
+					1, &memory_barrier,//memoryBarriers (count, data)
+					0, nullptr,//bufferBarriers (count, data)
+					0, nullptr//imageBarriers (count, data)
+				);
+			}
+
+
 		}
+
+
+
+		//render pass
 		{
-			VkMemoryBarrier memory_barrier{
-				.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
-				.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
-				.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT
+			std::array<VkClearValue, 2> clear_values{
+				VkClearValue{.color = {.float32{0.0f, 0.0f, 0.0f, 1.0f}} },
+				VkClearValue{.depthStencil = {.depth = 1.0f, .stencil = 0}}
 			};
 
-			vkCmdPipelineBarrier(
-				workspace.command_buffer,
-				VK_PIPELINE_STAGE_TRANSFER_BIT,
-				VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-				0,
-				1, &memory_barrier,//memoryBarriers (count, data)
-				0, nullptr,//bufferBarriers (count, data)
-				0, nullptr//imageBarriers (count, data)
-			);
-		}
-
-
-	}
-
-	
-
-	//render pass
-	{
-		std::array<VkClearValue, 2> clear_values{
-			VkClearValue{.color = {.float32{0.0f, 0.0f, 0.0f, 1.0f}} },
-			VkClearValue{.depthStencil = {.depth = 1.0f, .stencil = 0}}
-		};
-
-		VkRenderPassBeginInfo begin_info{
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-			.renderPass = render_pass,
-			.framebuffer = framebuffer,
-			.renderArea = {
-				.offset = {.x = 0, .y = 0},
-				.extent = rtg.swapchain_extent
-			},
-			.clearValueCount = static_cast<uint32_t>(clear_values.size()),
-			.pClearValues = clear_values.data()
-		};
-
-		vkCmdBeginRenderPass(workspace.command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
-		{
-			VkRect2D scissor{
-				.offset = {.x = 0, .y = 0},
-				.extent = rtg.swapchain_extent
+			VkRenderPassBeginInfo begin_info{
+				.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+				.renderPass = render_pass,
+				.framebuffer = framebuffer,
+				.renderArea = {
+					.offset = {.x = 0, .y = 0},
+					.extent = rtg.swapchain_extent
+				},
+				.clearValueCount = static_cast<uint32_t>(clear_values.size()),
+				.pClearValues = clear_values.data()
 			};
 
-			vkCmdSetScissor(workspace.command_buffer, 0, 1, &scissor);
+			vkCmdBeginRenderPass(workspace.command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
+			{
+				VkRect2D scissor{
+					.offset = {.x = 0, .y = 0},
+					.extent = rtg.swapchain_extent
+				};
 
-			if (camera_mode == CameraMode::Scene) {
-				float x_scale = 1.0f;
-				float y_scale = 1.0f;
+				vkCmdSetScissor(workspace.command_buffer, 0, 1, &scissor);
 
-				float image_aspect = rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height;
+				if (camera_mode == CameraMode::Scene) {
+					float x_scale = 1.0f;
+					float y_scale = 1.0f;
 
-				if (image_aspect > scene_camera.aspect) {
-					x_scale = scene_camera.aspect / image_aspect;
+					float image_aspect = rtg.swapchain_extent.width / (float)rtg.swapchain_extent.height;
+
+					if (image_aspect > scene_camera.aspect) {
+						x_scale = scene_camera.aspect / image_aspect;
+					}
+					else {
+						y_scale = image_aspect / scene_camera.aspect;
+					}
+
+					VkViewport viewport{
+						.x = (1 - x_scale) * 0.5f * float(rtg.swapchain_extent.width),
+						.y = (1 - y_scale) * 0.5f * float(rtg.swapchain_extent.height),
+						.width = float(rtg.swapchain_extent.width) * x_scale,
+						.height = float(rtg.swapchain_extent.height) * y_scale,
+						.minDepth = 0.0f,
+						.maxDepth = 1.0f
+					};
+					vkCmdSetViewport(workspace.command_buffer, 0, 1, &viewport);
 				}
 				else {
-					y_scale = image_aspect / scene_camera.aspect;
+
+					VkViewport viewport{
+						.x = 0,
+						.y = 0,
+						.width = float(rtg.swapchain_extent.width),
+						.height = float(rtg.swapchain_extent.height),
+						.minDepth = 0.0f,
+						.maxDepth = 1.0f
+					};
+					vkCmdSetViewport(workspace.command_buffer, 0, 1, &viewport);
 				}
 
-				VkViewport viewport{
-					.x = (1 - x_scale) * 0.5f * float(rtg.swapchain_extent.width),
-					.y = (1 - y_scale) * 0.5f * float(rtg.swapchain_extent.height),
-					.width = float(rtg.swapchain_extent.width) * x_scale,
-					.height = float(rtg.swapchain_extent.height) * y_scale,
-					.minDepth = 0.0f,
-					.maxDepth = 1.0f
-				};
-				vkCmdSetViewport(workspace.command_buffer, 0, 1, &viewport);
-			}
-			else {
 
-				VkViewport viewport{
-					.x = 0,
-					.y = 0,
-					.width = float(rtg.swapchain_extent.width),
-					.height = float(rtg.swapchain_extent.height),
-					.minDepth = 0.0f,
-					.maxDepth = 1.0f
-				};
-				vkCmdSetViewport(workspace.command_buffer, 0, 1, &viewport);
 			}
 
+			{
+				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, background_pipeline.handle);
+				{
+					//push constants:
+					BackgroundPipeline::Push push{
+						.time = time
+					};
 
+					vkCmdPushConstants(workspace.command_buffer, background_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(BackgroundPipeline::Push), &push);
+				}
+				vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
+			}
+
+			if (!lines_vertices.empty())
+			{
+				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lines_pipeline.handle);
+				{
+					std::array<VkBuffer, 1> vertex_buffers{ workspace.line_vertices.handle };
+					std::array<VkDeviceSize, 1> offsets{ 0 };
+					vkCmdBindVertexBuffers(workspace.command_buffer, 0, uint32_t(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
+					//vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
+
+				}
+
+				{
+					//bind descriptor set layout
+					std::array<VkDescriptorSet, 1> descriptor_sets{ workspace.Camera_descriptors };
+					vkCmdBindDescriptorSets(
+						workspace.command_buffer,
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						lines_pipeline.layout,
+						0,
+						static_cast<uint32_t>(descriptor_sets.size()),
+						descriptor_sets.data(),
+						0,
+						nullptr);
+				}
+				vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
+			}
+
+			//objects
+			{
+				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.handle);
+				{
+					ObjectsPipeline::Push push{
+						.exposure = rtg.configuration.exposure,
+						.tone_operator = static_cast<int>(rtg.configuration.tone_operator),
+						.light_count = int(lights.size())
+					};
+
+					vkCmdPushConstants(workspace.command_buffer, objects_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectsPipeline::Push), &push);
+				}
+				{
+					std::array<VkBuffer, 1> vertex_buffers{ mesh_vertex_buffer.handle };
+					std::array<VkDeviceSize, 1> offsets{ 0 };
+					vkCmdBindVertexBuffers(workspace.command_buffer, 0, static_cast<uint32_t>(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
+
+					//Camera descriptor set is still bound(!)
+
+				}
+
+				if (rtg.configuration.indexed) {
+					vkCmdBindIndexBuffer(
+						workspace.command_buffer,
+						mesh_indices_buffer.handle,
+						0,
+						VK_INDEX_TYPE_UINT32
+					);
+				}
+
+				{
+					std::array<VkDescriptorSet, 2> descriptor_sets{
+						workspace.World_descriptors,
+						workspace.Transforms_descriptors
+					};
+
+					vkCmdBindDescriptorSets(
+						workspace.command_buffer,
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						objects_pipeline.layout,
+						0,
+						uint32_t(descriptor_sets.size()),
+						descriptor_sets.data(),
+						0,
+						nullptr
+					);
+
+				}
+				if (rtg.configuration.profile) {
+					vkCmdWriteTimestamp(workspace.command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, query_pool, render_params.workspace_index * 2);
+				}
+
+				{
+					std::array<VkDescriptorSet, 1> descriptor_sets{ workspace.Lights_descriptors };
+					vkCmdBindDescriptorSets(
+						workspace.command_buffer,
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						objects_pipeline.layout,
+						10,
+						uint32_t(descriptor_sets.size()),
+						descriptor_sets.data(),
+						0,
+						nullptr
+					);
+
+				}
+				
+
+				for (ObjectInstance const& inst : object_instances) {
+					uint32_t index = uint32_t(&inst - &object_instances[0]);
+					if (inst.texture_type == ObjectInstance::Type::ALBEDO) {
+						if (!rtg.scene.environments.empty()) {
+							continue;
+						}
+						std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[env_texture_index], texture_descriptors[inst.normal_map] };
+
+						vkCmdBindDescriptorSets(
+							workspace.command_buffer,
+							VK_PIPELINE_BIND_POINT_GRAPHICS,
+							objects_pipeline.layout,
+							2,
+							static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
+							0, nullptr
+						);
+
+						if (!rtg.configuration.indexed) {
+							vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+						}
+						else {
+							vkCmdDrawIndexed(
+								workspace.command_buffer,
+								inst.vertices.count,
+								1,
+								inst.vertices.first,
+								0,
+								index
+							);
+						}
+					}
+				}
+
+				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.env_handle);
+
+				for (ObjectInstance const& inst : object_instances) {
+					uint32_t index = uint32_t(&inst - &object_instances[0]);
+					if (inst.texture_type == ObjectInstance::Type::ENV) {
+						std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[env_texture_index], texture_descriptors[inst.normal_map] };
+
+						vkCmdBindDescriptorSets(
+							workspace.command_buffer,
+							VK_PIPELINE_BIND_POINT_GRAPHICS,
+							objects_pipeline.layout,
+							2,
+							static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
+							0, nullptr
+						);
+
+						if (!rtg.configuration.indexed) {
+							vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+						}
+						else {
+							vkCmdDrawIndexed(
+								workspace.command_buffer,
+								inst.vertices.count,
+								1,
+								inst.vertices.first,
+								0,
+								index
+							);
+						}
+					}
+				}
+
+				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.mirror_handle);
+
+				for (ObjectInstance const& inst : object_instances) {
+					uint32_t index = uint32_t(&inst - &object_instances[0]);
+					if (inst.texture_type == ObjectInstance::Type::MIRROR) {
+						std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[env_texture_index], texture_descriptors[inst.normal_map] };
+
+						vkCmdBindDescriptorSets(
+							workspace.command_buffer,
+							VK_PIPELINE_BIND_POINT_GRAPHICS,
+							objects_pipeline.layout,
+							2,
+							static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
+							0, nullptr
+						);
+
+						if (!rtg.configuration.indexed) {
+							vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+						}
+						else {
+							vkCmdDrawIndexed(
+								workspace.command_buffer,
+								inst.vertices.count,
+								1,
+								inst.vertices.first,
+								0,
+								index
+							);
+						}
+					}
+				}
+
+				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.lambertian_env_handle);
+
+				for (ObjectInstance const& inst : object_instances) {
+					uint32_t index = uint32_t(&inst - &object_instances[0]);
+					if (inst.texture_type == ObjectInstance::Type::ALBEDO) {
+						if (rtg.scene.environments.empty()) {
+							continue;
+						}
+						std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors.back(), texture_descriptors[inst.normal_map] };
+
+						vkCmdBindDescriptorSets(
+							workspace.command_buffer,
+							VK_PIPELINE_BIND_POINT_GRAPHICS,
+							objects_pipeline.layout,
+							2,
+							static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
+							0, nullptr
+						);
+
+						if (!rtg.configuration.indexed) {
+							vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+						}
+						else {
+							vkCmdDrawIndexed(
+								workspace.command_buffer,
+								inst.vertices.count,
+								1,
+								inst.vertices.first,
+								0,
+								index
+							);
+						}
+					}
+				}
+
+				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.pbr_handle);
+
+				for (ObjectInstance const& inst : object_instances) {
+					uint32_t index = uint32_t(&inst - &object_instances[0]);
+					if (inst.texture_type == ObjectInstance::Type::PBR) {
+						std::array<VkDescriptorSet, 8> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors.back(), texture_descriptors[inst.normal_map], texture_descriptors[inst.roughness_map], texture_descriptors[inst.metalness_map], texture_descriptors[env_texture_index], texture_descriptors[lut_texture_index] };
+
+						vkCmdBindDescriptorSets(
+							workspace.command_buffer,
+							VK_PIPELINE_BIND_POINT_GRAPHICS,
+							objects_pipeline.layout,
+							2,
+							static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
+							0, nullptr
+						);
+
+						if (!rtg.configuration.indexed) {
+							vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+						}
+						else {
+							vkCmdDrawIndexed(
+								workspace.command_buffer,
+								inst.vertices.count,
+								1,
+								inst.vertices.first,
+								0,
+								index
+							);
+						}
+					}
+				}
+
+
+
+				if (rtg.configuration.profile) {
+					vkCmdWriteTimestamp(workspace.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, query_pool, render_params.workspace_index * 2 + 1);
+				}
+				//vkCmdDraw(workspace.command_buffer, static_cast<uint32_t>(object_vertices.size / sizeof(PosColVertex)), 1, 0, 0);
+
+			}
+
+
+			vkCmdEndRenderPass(workspace.command_buffer);
 		}
 
+
+
+
+		VK(vkEndCommandBuffer(workspace.command_buffer));
+		//submit `workspace.command buffer` for the GPU to run:
+		//refsol::Tutorial_render_submit(rtg, render_params, workspace.command_buffer);
 		{
-			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, background_pipeline.handle);
-			{
-				//push constants:
-				BackgroundPipeline::Push push{
-					.time = time
-				};
+			std::array<VkSemaphore, 1> wait_semaphores{
+				render_params.image_available
+			};
+			std::array<VkPipelineStageFlags, 1> wait_stages{
+				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+			};
 
-				vkCmdPushConstants(workspace.command_buffer, background_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(BackgroundPipeline::Push), &push);
-			}
-			vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
-		}
+			static_assert(wait_semaphores.size() == wait_stages.size(), "every semaphore needs a stage");
 
-		if (!lines_vertices.empty())
-		{
-			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lines_pipeline.handle);
-			{
-				std::array<VkBuffer, 1> vertex_buffers{ workspace.line_vertices.handle };
-				std::array<VkDeviceSize, 1> offsets{ 0 };
-				vkCmdBindVertexBuffers(workspace.command_buffer, 0, uint32_t(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
-				//vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
+			std::array<VkSemaphore, 1> signal_semaphores{
+				render_params.image_done
+			};
 
-			}
+			VkSubmitInfo submit_info{
+				.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+				.waitSemaphoreCount = static_cast<uint32_t>(wait_semaphores.size()),
+				.pWaitSemaphores = wait_semaphores.data(),
+				.pWaitDstStageMask = wait_stages.data(),
+				.commandBufferCount = 1,
+				.pCommandBuffers = &workspace.command_buffer,
+				.signalSemaphoreCount = static_cast<uint32_t>(signal_semaphores.size()),
+				.pSignalSemaphores = signal_semaphores.data(),
+			};
 
-			{
-				//bind descriptor set layout
-				std::array<VkDescriptorSet, 1> descriptor_sets{ workspace.Camera_descriptors };
-				vkCmdBindDescriptorSets(
-					workspace.command_buffer,
-					VK_PIPELINE_BIND_POINT_GRAPHICS,
-					lines_pipeline.layout,
-					0,
-					static_cast<uint32_t>(descriptor_sets.size()),
-					descriptor_sets.data(),
-					0,
-					nullptr);
-			}
-			vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
-		}
-
-		//objects
-		{
-			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.handle);
-			{
-				ObjectsPipeline::Push push{
-					.exposure = rtg.configuration.exposure,
-					.tone_operator = static_cast<int>(rtg.configuration.tone_operator)
-				};
-
-				vkCmdPushConstants(workspace.command_buffer, objects_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectsPipeline::Push), &push);
-			}
-			{
-				std::array<VkBuffer, 1> vertex_buffers{ mesh_vertex_buffer.handle };
-				std::array<VkDeviceSize, 1> offsets{ 0 };
-				vkCmdBindVertexBuffers(workspace.command_buffer, 0, static_cast<uint32_t>(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
-
-				//Camera descriptor set is still bound(!)
-
-			}
-
-			if (rtg.configuration.indexed) {
-				vkCmdBindIndexBuffer(
-					workspace.command_buffer,
-					mesh_indices_buffer.handle,
-					0,
-					VK_INDEX_TYPE_UINT32
-				);
-			}
-
-			{
-				std::array<VkDescriptorSet, 2> descriptor_sets{
-					workspace.World_descriptors,
-					workspace.Transforms_descriptors									
-				};
-
-				vkCmdBindDescriptorSets(
-					workspace.command_buffer,
-					VK_PIPELINE_BIND_POINT_GRAPHICS,
-					objects_pipeline.layout,
-					0,
-					uint32_t(descriptor_sets.size()),
-					descriptor_sets.data(),
-					0,
-					nullptr
-				);
-
-			}
-			if (rtg.configuration.profile) {
-				vkCmdWriteTimestamp(workspace.command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, query_pool, render_params.workspace_index * 2);
-			}
-
-			for (ObjectInstance const& inst : object_instances) {
-				uint32_t index = uint32_t(&inst - &object_instances[0]);
-				if (inst.texture_type == ObjectInstance::Type::ALBEDO) {
-					if (!rtg.scene.environments.empty()) {
-						continue;
-					}
-					std::array<VkDescriptorSet, 4> descriptor_sets{  texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[env_texture_index], texture_descriptors[inst.normal_map]};
-
-					vkCmdBindDescriptorSets(
-						workspace.command_buffer,
-						VK_PIPELINE_BIND_POINT_GRAPHICS,
-						objects_pipeline.layout,
-						2,
-						static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
-						0, nullptr
-					);
-
-					if (!rtg.configuration.indexed) {
-						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
-					}
-					else {
-						vkCmdDrawIndexed(
-							workspace.command_buffer,
-							inst.vertices.count,
-							1,
-							inst.vertices.first,
-							0,
-							index
-						);
-					}
-				}								
-			}
-
-			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.env_handle);
-
-			for (ObjectInstance const& inst : object_instances) {
-				uint32_t index = uint32_t(&inst - &object_instances[0]);
-				if (inst.texture_type == ObjectInstance::Type::ENV) {
-					std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[env_texture_index], texture_descriptors[inst.normal_map] };
-
-					vkCmdBindDescriptorSets(
-						workspace.command_buffer,
-						VK_PIPELINE_BIND_POINT_GRAPHICS,
-						objects_pipeline.layout,
-						2,
-						static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
-						0, nullptr
-					);
-
-					if (!rtg.configuration.indexed) {
-						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
-					}
-					else {
-						vkCmdDrawIndexed(
-							workspace.command_buffer,
-							inst.vertices.count,
-							1,
-							inst.vertices.first,
-							0,
-							index
-						);
-					}
-				}
-			}
-
-			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.mirror_handle);
-
-			for (ObjectInstance const& inst : object_instances) {
-				uint32_t index = uint32_t(&inst - &object_instances[0]);
-				if (inst.texture_type == ObjectInstance::Type::MIRROR) {
-					std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[env_texture_index], texture_descriptors[inst.normal_map] };
-
-					vkCmdBindDescriptorSets(
-						workspace.command_buffer,
-						VK_PIPELINE_BIND_POINT_GRAPHICS,
-						objects_pipeline.layout,
-						2,
-						static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
-						0, nullptr
-					);
-
-					if (!rtg.configuration.indexed) {
-						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
-					}
-					else {
-						vkCmdDrawIndexed(
-							workspace.command_buffer,
-							inst.vertices.count,
-							1,
-							inst.vertices.first,
-							0,
-							index
-						);
-					}
-				}
-			}
-
-			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.lambertian_env_handle);
-
-			for (ObjectInstance const& inst : object_instances) {
-				uint32_t index = uint32_t(&inst - &object_instances[0]);
-				if (inst.texture_type == ObjectInstance::Type::ALBEDO) {
-					if (rtg.scene.environments.empty()) {
-						continue;
-					}
-					std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors.back(), texture_descriptors[inst.normal_map]};
-
-					vkCmdBindDescriptorSets(
-						workspace.command_buffer,
-						VK_PIPELINE_BIND_POINT_GRAPHICS,
-						objects_pipeline.layout,
-						2,
-						static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
-						0, nullptr
-					);
-
-					if (!rtg.configuration.indexed) {
-						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
-					}
-					else {
-						vkCmdDrawIndexed(
-							workspace.command_buffer,
-							inst.vertices.count,
-							1,
-							inst.vertices.first,
-							0,
-							index
-						);
-					}
-				}
-			}
-
-			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.pbr_handle);
-
-			for (ObjectInstance const& inst : object_instances) {
-				uint32_t index = uint32_t(&inst - &object_instances[0]);
-				if (inst.texture_type == ObjectInstance::Type::PBR) {					
-					std::array<VkDescriptorSet, 8> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors.back(), texture_descriptors[inst.normal_map], texture_descriptors[inst.roughness_map], texture_descriptors[inst.metalness_map], texture_descriptors[env_texture_index], texture_descriptors[lut_texture_index]};
-
-					vkCmdBindDescriptorSets(
-						workspace.command_buffer,
-						VK_PIPELINE_BIND_POINT_GRAPHICS,
-						objects_pipeline.layout,
-						2,
-						static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
-						0, nullptr
-					);
-
-					if (!rtg.configuration.indexed) {
-						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
-					}
-					else {
-						vkCmdDrawIndexed(
-							workspace.command_buffer,
-							inst.vertices.count,
-							1,
-							inst.vertices.first,
-							0,
-							index
-						);
-					}
-				}
-			}
-
-
-
-			if (rtg.configuration.profile) {
-				vkCmdWriteTimestamp(workspace.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, query_pool, render_params.workspace_index * 2 + 1);
-			}
-			//vkCmdDraw(workspace.command_buffer, static_cast<uint32_t>(object_vertices.size / sizeof(PosColVertex)), 1, 0, 0);
-
+			VK(vkQueueSubmit(rtg.graphics_queue, 1, &submit_info, render_params.workspace_available));
 		}
 
 
-		vkCmdEndRenderPass(workspace.command_buffer);
 	}
-
-	
-
-
-	VK(vkEndCommandBuffer(workspace.command_buffer));
-	//submit `workspace.command buffer` for the GPU to run:
-	//refsol::Tutorial_render_submit(rtg, render_params, workspace.command_buffer);
-	{
-		std::array<VkSemaphore, 1> wait_semaphores{
-			render_params.image_available
-		};
-		std::array<VkPipelineStageFlags, 1> wait_stages{
-			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-		};
-
-		static_assert(wait_semaphores.size() == wait_stages.size(), "every semaphore needs a stage");
-
-		std::array<VkSemaphore, 1> signal_semaphores{
-			render_params.image_done
-		};
-
-		VkSubmitInfo submit_info{
-			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-			.waitSemaphoreCount = static_cast<uint32_t>(wait_semaphores.size()),
-			.pWaitSemaphores = wait_semaphores.data(),
-			.pWaitDstStageMask = wait_stages.data(),
-			.commandBufferCount = 1,
-			.pCommandBuffers = &workspace.command_buffer,
-			.signalSemaphoreCount = static_cast<uint32_t>(signal_semaphores.size()),
-			.pSignalSemaphores = signal_semaphores.data(),
-		};
-
-		VK(vkQueueSubmit(rtg.graphics_queue, 1, &submit_info, render_params.workspace_available));
-	}
-
-
 }
-
 
 void Viewer::update(float dt) {
 	time += dt;
@@ -2331,6 +2451,7 @@ std::vector<Vertex> Viewer::load_mesh_vertices() {
 
 void Viewer::load_objects() {
 	object_instances.clear();
+	lights.clear();
 	scene_camera.ready = false;
 	delayed_culling_objects.clear();
 	for (const auto root : rtg.scene.scene.roots) {
@@ -2472,49 +2593,70 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 		if (root->light != nullptr) {
 			if (std::holds_alternative<S72::Light::Sun>(root->light->source)) {
 				S72::Light::Sun sun = std::get<S72::Light::Sun>(root->light->source);
-				assert(sun.angle == 0 || std::abs(sun.angle - float(M_PI)) < 1e-4f);
 
-				if (sun.angle == 0) {
-					vec4 dir = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 1.0f, 0.0f };
-					float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
-					dir[0] = dir[0] / len;
-					dir[1] = dir[1] / len;
-					dir[2] = dir[2] / len;
-					world.SUN_DIRECTION.x = dir[0];
-					world.SUN_DIRECTION.y = dir[1];
-					world.SUN_DIRECTION.z = dir[2];
-
-					world.SUN_ENERGY.r = sun.strength * root->light->tint.r;
-					world.SUN_ENERGY.g = sun.strength * root->light->tint.g;
-					world.SUN_ENERGY.b = sun.strength * root->light->tint.b;
-				}
-				else if (std::abs(sun.angle - float(M_PI)) < 1e-4f) {
-					vec4 dir = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 1.0f, 0.0f };
-					float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
-					dir[0] = dir[0] / len;
-					dir[1] = dir[1] / len;
-					dir[2] = dir[2] / len;
-					world.SKY_DIRECTION.x = dir[0];
-					world.SKY_DIRECTION.y = dir[1];
-					world.SKY_DIRECTION.z = dir[2];
-					world.SKY_ENERGY.r = sun.strength * root->light->tint.r;
-					world.SKY_ENERGY.g = sun.strength * root->light->tint.g;
-					world.SKY_ENERGY.b = sun.strength * root->light->tint.b;
-				}
-			}
-			else {
 				vec4 dir = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 1.0f, 0.0f };
 				float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
 				dir[0] = dir[0] / len;
 				dir[1] = dir[1] / len;
 				dir[2] = dir[2] / len;
-				world.SKY_DIRECTION.x = dir[0];
-				world.SKY_DIRECTION.y = dir[1];
-				world.SKY_DIRECTION.z = dir[2];
-				world.SKY_ENERGY.r = 1;
-				world.SKY_ENERGY.g = 1;
-				world.SKY_ENERGY.b = 1;
-				//throw std::runtime_error("Unsupported light type");
+
+				vec4 strength = vec4{ sun.strength * root->light->tint.r, sun.strength * root->light->tint.g, sun.strength * root->light->tint.b, 1.0f };
+				
+				float angle = sun.angle;
+
+				lights.emplace_back(ObjectsPipeline::Light{
+					.direction = { dir[0], dir[1], dir[2] },
+					.angle = angle,
+					.strength = { strength[0], strength[1], strength[2] },
+					.type = ObjectsPipeline::Light::Type::SUN,															
+				});				
+			}
+			else if (std::holds_alternative<S72::Light::Sphere>(root->light->source)) {
+				S72::Light::Sphere sphere = std::get<S72::Light::Sphere>(root->light->source);
+
+				vec4 pos = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 0.0f, 1.0f };
+
+				vec4 strength = vec4{ sphere.power * root->light->tint.r, sphere.power * root->light->tint.g, sphere.power * root->light->tint.b, 1.0f };
+
+				float radius = sphere.radius;
+
+				float limit = sphere.limit;
+
+				lights.emplace_back(ObjectsPipeline::Light{
+					.position = { pos[0], pos[1], pos[2] },
+					.radius = radius,
+					.strength = { strength[0], strength[1], strength[2] },
+					.limit = limit,
+					.type = ObjectsPipeline::Light::Type::SPHERE,
+				});
+			}
+			else if (std::holds_alternative<S72::Light::Spot>(root->light->source)) {
+				S72::Light::Spot spot = std::get<S72::Light::Spot>(root->light->source);
+
+				vec4 pos = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 0.0f, 1.0f };
+
+				vec4 dir = WORLD_FROM_LOCAL_NORMAL * vec4{ 0.0f, 0.0f, -1.0f, 0.0f };
+
+				vec4 strength = vec4{ spot.power * root->light->tint.r, spot.power * root->light->tint.g, spot.power * root->light->tint.b, 1.0f };
+
+				float radius = spot.radius;
+
+				float limit = spot.limit;
+
+				float fov = spot.fov;
+				float blend = spot.blend;	
+
+				lights.emplace_back(ObjectsPipeline::Light{
+					.direction = { dir[0], dir[1], dir[2] },
+					.position = { pos[0], pos[1], pos[2] },					
+					.radius = radius,
+					.strength = { strength[0], strength[1], strength[2] },
+					.limit = limit,
+					.fov = fov,
+					.blend = blend,
+					.type = ObjectsPipeline::Light::Type::SPOT,
+				});
+
 			}
 		}
 

@@ -4,6 +4,7 @@
 layout(push_constant) uniform Push {
     float exposure;
 	int tone_operator;
+	int light_count;
 };
 
 vec3 expose(vec3 color) {
