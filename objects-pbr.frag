@@ -73,8 +73,8 @@ float computeHorizon(float nl, float sinTheta) {
 	}
 }
 
-float falloff(float distance, float radius) {
-	return pow(clamp(1.0 - pow(distance / radius, 4.0), 0.0, 1.0), 2.0) / (pow(distance, 2.0) + 1);
+float falloff(float distance, float radius) {	
+	return pow(max(0.0, 1.0 - pow(distance / radius, 4.0)), 2.0) / (pow(distance, 2.0) + 1);
 }
 
 //https://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf
@@ -103,41 +103,42 @@ vec3 representativeDirection(vec3 shadePosition, vec3 normal, vec3 viewDirection
 	}
 	else if (light.type == LIGHT_TYPE_SPHERE) {
 		vec3 L = light.position - shadePosition;
-		vec3 r = normalize(reflect(-viewDirection, normal));
+		vec3 r = reflect(-normalize(viewDirection), normal);
 		vec3 centerToRay = dot(L, r) * r - L;
 		vec3 closestPoint = L + centerToRay * clamp(light.radius / length(centerToRay), 0.0, 1.0);
-		return normalize(-closestPoint + shadePosition);
+		return normalize(closestPoint);
 	}
 	else if (light.type == LIGHT_TYPE_SPOT) {
 		vec3 L = light.position - shadePosition;
-		vec3 r = normalize(reflect(-viewDirection, normal));
+		vec3 r = reflect(normalize(-viewDirection), normal);
 		vec3 centerToRay = dot(L, r) * r - L;
 		vec3 closestPoint = L + centerToRay * clamp(light.radius / length(centerToRay), 0.0, 1.0);
-		return normalize(-closestPoint + shadePosition);
+		return normalize(closestPoint);
 	}
 	else {
 		return vec3(0.0);
 	}
 }
 
-float D_GGX(float NdotH, float roughness) {
-	float a = roughness * roughness;
-	float a2 = a * a;
-	return a2 / (PI * pow(NdotH * NdotH * (a2 - 1.0) + 1.0, 2.0));
+float D_GGX(float NdotH, float alpha) {
+	
+	float a2 = alpha * alpha;
+	return a2 / (PI * (NdotH * NdotH * (a2 - 1.0) + 1.0) * (NdotH * NdotH * (a2 - 1.0) + 1.0));
 }
 
-float G_Schlick(float NdotV, float roughness) {
-	float k = (roughness + 1.0) * (roughness + 1.0) / 8.0;
-	return NdotV / (NdotV * (1.0 - k) + k);
+float G_helper(float NdotX, float k) {
+	return NdotX / (NdotX * (1.0 - k) + k);
 }
 
-float G_Smith(float NdotV, float NdotL, float roughness) {
-	return G_Schlick(NdotV, roughness) * G_Schlick(NdotL, roughness);
+float G_Smith(float roughness, float NdotV, float NdotL) {
+	float k = roughness*roughness / 2.0;
+	return G_helper(NdotL, k) * G_helper(NdotV, k);
 }
 
 vec3 F_Schlick(float VdotH, vec3 F0)
 {
-    return F0 + (1.0 - F0) * pow(2.0, (-5.55472 * VdotH - 6.98316) * VdotH);
+	float Fc = pow(1.0 - VdotH, 5.0);
+	return (1.0 - Fc) * F0 + Fc;    
 }
 
 
@@ -203,7 +204,16 @@ void main() {
 			float outerAngle = lights[i].fov / 2.0;
 			float innerAngle = outerAngle * (1.0 - lights[i].blend);
 
-			float spotEffect = smoothstep(outerAngle, innerAngle, angle);
+			float spotEffect = 0;
+			if (angle < innerAngle) {
+				spotEffect = 1.0;
+			}
+			else if (angle > outerAngle) {
+				spotEffect = 0.0;
+			}
+			else {
+				spotEffect = (outerAngle - angle) / (outerAngle - innerAngle);
+			}		
 
 			float nl = dot(tangent_normal, lightDir);
 			float sinTheta = lights[i].radius / distance;
@@ -213,25 +223,53 @@ void main() {
 			alpha_prime = clamp(alpha + lights[i].radius / distance / 2.0, 0.0, 1.0);
 		}
 
-		vec3 H = normalize(L + view);
 		vec3 N = tangent_normal;
-		vec3 V = view;
+		vec3 V = normalize(view);		
 
-		float NdotL = max(dot(N, L), 0.0);
-		float NdotV = max(dot(N, V), 0.0);
-		float NdotH = max(dot(N, H), 0.0);
-		float VdotH = max(dot(V, H), 0.0);
+		// be careful when calculating the half vector, both should be normalized
+		vec3 H = normalize(L + V);
+		
+		
 
-		// GGX
-		float D = D_GGX(NdotH, roughness);
+		float NdotL = clamp(dot(N, L), 0.0, 1.0);
+		float NdotV = clamp(dot(N, V), 0.0, 1.0);
+		float NdotH = clamp(dot(N, H), 0.0, 1.0);
+		float VdotH = clamp(dot(V, H), 0.0, 1.0);
+
+		float finalSpecEffect = 1.0;
+		if (lights[i].type == LIGHT_TYPE_SPOT) {
+			vec3 l = normalize(position - lights[i].position);
+			float cosL = dot(l, normalize(lights[i].direction));
+			float L_angle = acos(clamp(cosL, -1.0, 1.0));
+        	float outerAngle = lights[i].fov / 2.0;
+			float innerAngle = outerAngle * (1.0 - lights[i].blend);
+
+			finalSpecEffect = clamp((outerAngle - L_angle) / (outerAngle - innerAngle), 0.0, 1.0);
+        			
+			float distance = length(lights[i].position - position);
+			finalSpecEffect *= falloff(distance, lights[i].limit);
+		} 
+		else if (lights[i].type == LIGHT_TYPE_SPHERE) {
+			float distance = length(lights[i].position - position);
+			finalSpecEffect = falloff(distance, lights[i].limit);
+		}
+
+		
+		
+		if (NdotL > 0.0 && NdotV > 0.0 && NdotH > 0.0 && VdotH > 0.0) {				
+		float D = D_GGX(NdotH, alpha_prime);
 		float G = G_Smith(NdotV, NdotL, roughness);
 		vec3  F = F_Schlick(VdotH, tint);
-
 		vec3 lightSpec = (D * G * F) / (4 * NdotV * NdotL) * (alpha / alpha_prime) * (alpha / alpha_prime);
-		radiance += lightSpec * lights[i].strength * NdotL;
+
+		
+		radiance += lightSpec * lights[i].strength * NdotL * finalSpecEffect;
+		}
+
+		
 	}
-	radiance += diffAlbedo * e;
-	//radiance = vec3(0.0);
+	radiance += diffAlbedo * e / 3.1415926;
+	//radiance = albedo;
 
 	vec3 tonemapped_color = tonemap(radiance);
 		

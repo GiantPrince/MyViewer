@@ -32,9 +32,10 @@ void main()
 {
 	gl_Position = TRANSFORMS[gl_InstanceIndex].CLIP_FROM_MODEL * vec4(Position, 1.0);
 	position = mat4x3(TRANSFORMS[gl_InstanceIndex].WORLD_FROM_LOCAL) * vec4(Position, 1.0);
-	view = position - vec3(EYE);
+	view = vec3(EYE) - position;
 	normal = mat3(TRANSFORMS[gl_InstanceIndex].WORLD_FROM_LOCAL_NORMAL) * Normal;
 	texCoord = TexCoord;
+
 	tangent = mat3(TRANSFORMS[gl_InstanceIndex].WORLD_FROM_LOCAL_NORMAL) * vec3(Tangent);
 	bitangent = Tangent.w * cross(normal, tangent);
 }

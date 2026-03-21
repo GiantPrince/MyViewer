@@ -69,7 +69,7 @@ float computeHorizon(float nl, float sinTheta) {
 }
 
 float falloff(float distance, float radius) {
-	return max(0.0, 1.0 - pow(distance / radius, 4.0)) / (pow(distance, 2.0));
+	return pow(max(0.0, 1.0 - pow(distance / radius, 4.0)), 2.0) / (pow(distance, 2.0) + 1);
 }
 
 void main() {
