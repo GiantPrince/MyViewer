@@ -69,7 +69,7 @@ float computeHorizon(float nl, float sinTheta) {
 }
 
 float falloff(float distance, float radius) {
-	return pow(clamp(1.0 - pow(distance / radius, 4.0), 0.0, 1.0), 2.0) / (pow(distance, 2.0) + 1);
+	return max(0.0, 1.0 - pow(distance / radius, 4.0)) / (pow(distance, 2.0));
 }
 
 void main() {
@@ -82,12 +82,12 @@ void main() {
 	
 	vec3 albedo = texture(TEXTURE, texCoord).rgb;
 		
-	vec3 e = vec3(0.0);//textureLod(ENV, tangent_normal, 0.0).rgb;
+	vec3 e = textureLod(ENV, tangent_normal, 0.0).rgb * 3.1415926;
 
 	for (int i = 0; i < light_count; i++) {
 		if (lights[i].type == LIGHT_TYPE_SUN) {
 			// dir normalized
-			float nl = dot(tangent_normal, lights[i].direction);
+			float nl = dot(tangent_normal, -lights[i].direction);
 			float sinTheta = sin(lights[i].angle / 2.0);
 
 			e += lights[i].strength * computeHorizon(nl, sinTheta);
@@ -98,7 +98,7 @@ void main() {
 			lightDir = normalize(lightDir);
 
 			float nl = dot(tangent_normal, lightDir);
-			float sinTheta = lights[i].radius / distance;
+			float sinTheta = lights[i].radius / max(distance, lights[i].radius);
 
 			e += lights[i].strength * computeHorizon(nl, sinTheta) * falloff(distance, lights[i].limit);
 		}
@@ -113,16 +113,26 @@ void main() {
 			float outerAngle = lights[i].fov / 2.0;
 			float innerAngle = outerAngle * (1.0 - lights[i].blend);
 
-			float spotEffect = smoothstep(outerAngle, innerAngle, angle);
+			float spotEffect = 0;
+			if (angle < innerAngle) {
+				spotEffect = 1.0;
+			}
+			else if (angle > outerAngle) {
+				spotEffect = 0.0;
+			}
+			else {
+				spotEffect = (outerAngle - angle) / (outerAngle - innerAngle);
+			}		
+			
 
 			float nl = dot(tangent_normal, lightDir);
-			float sinTheta = lights[i].radius / distance;
+			float sinTheta = lights[i].radius / max(distance, lights[i].radius);
 
 			e += lights[i].strength * computeHorizon(nl, sinTheta) * falloff(distance, lights[i].limit) * spotEffect;
 		}
 	}
 
-	vec3 radiance = albedo * e;
+	vec3 radiance = albedo * e / 3.1415926;
 	
 	vec3 tonemapped_color = tonemap(radiance);
 		

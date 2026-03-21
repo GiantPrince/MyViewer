@@ -342,11 +342,79 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 	}
 
 	{
+		// deal with default ENV and LUT
+		if (env_texture_index == UINT32_MAX) {
+			auto env_cubemap = rtg.helpers.create_cubemap(
+				{ .width = 1, .height = 1 },
+				VK_FORMAT_R32G32B32A32_SFLOAT,
+				VK_IMAGE_TILING_OPTIMAL,
+				VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				Helpers::Unmapped,
+				1
+			);
+			std::array<vec4, 6> default_env_color
+			{ vec4{0.0f, 0.0f, 0.0f, 1.0f },
+			  vec4{0.0f, 0.0f, 0.0f, 1.0f },
+			  vec4{0.0f, 0.0f, 0.0f, 1.0f },
+			  vec4{0.0f, 0.0f, 0.0f, 1.0f },
+			  vec4{0.0f, 0.0f, 0.0f, 1.0f },
+			  vec4{0.0f, 0.0f, 0.0f, 1.0f }
+			};			
+			rtg.helpers.transfer_to_cubemap(default_env_color.data(), default_env_color.size() * sizeof(vec4), env_cubemap);
+			env_texture_index = static_cast<uint32_t>(textures.size());
+			textures.emplace_back(std::move(env_cubemap));
+		}
+
+		if (lut_texture_index == UINT32_MAX) {
+			auto lut_texture = rtg.helpers.create_image(
+				{ .width = 1, .height = 1 },
+				VK_FORMAT_R32G32B32A32_SFLOAT,
+				VK_IMAGE_TILING_OPTIMAL,
+				VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				Helpers::Unmapped
+			);
+			std::array<vec4, 1> default_lut_color
+			{ vec4{0.0f, 0.0f, 0.0f, 1.0f },			  
+			};			
+			rtg.helpers.transfer_to_image(default_lut_color.data(), default_lut_color.size() * sizeof(vec4), lut_texture);
+			lut_texture_index = static_cast<uint32_t>(textures.size());
+			textures.emplace_back(std::move(lut_texture));
+		}
+
+		if (lambertian_texture_index == UINT32_MAX) {
+			auto lambertian_texture = rtg.helpers.create_cubemap(
+				{ .width = 1, .height = 1 },
+				VK_FORMAT_R32G32B32A32_SFLOAT,
+				VK_IMAGE_TILING_OPTIMAL,
+				VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				Helpers::Unmapped,
+				1
+			);
+			std::array<vec4, 6> default_lambertian_color
+			{ vec4{0.0f, 0.0f, 0.0f, 1.0f },
+			  vec4{0.0f, 0.0f, 0.0f, 1.0f },
+			  vec4{0.0f, 0.0f, 0.0f, 1.0f },
+			  vec4{0.0f, 0.0f, 0.0f, 1.0f },
+			  vec4{0.0f, 0.0f, 0.0f, 1.0f },
+			  vec4{0.0f, 0.0f, 0.0f, 1.0f }
+			};
+			rtg.helpers.transfer_to_cubemap(default_lambertian_color.data(), default_lambertian_color.size() * sizeof(vec4), lambertian_texture);
+			lambertian_texture_index = static_cast<uint32_t>(textures.size());
+			textures.emplace_back(std::move(lambertian_texture));
+		}		
+	}
+
+	{
 		texture_views.reserve(textures.size());
 		for (Helpers::AllocatedImage const& image : textures) {
 			size_t index = &image - &textures[0];
 			VkImageViewCreateInfo create_info{};
-			if (image.format == VK_FORMAT_E5B9G9R9_UFLOAT_PACK32) {
+			if (image.format == VK_FORMAT_E5B9G9R9_UFLOAT_PACK32 
+				|| index == env_texture_index 
+				|| index == lambertian_texture_index) {
 				uint32_t level_count = index == env_texture_index ? max_mipmap_level : 1;
 
 				create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -391,9 +459,9 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 			.magFilter = VK_FILTER_LINEAR,
 			.minFilter = VK_FILTER_LINEAR,
 			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
 			.mipLodBias = 0.0f,
 			.anisotropyEnable = VK_FALSE,
 			.maxAnisotropy = 0.0f,
@@ -413,9 +481,9 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 			.magFilter = VK_FILTER_LINEAR,
 			.minFilter = VK_FILTER_LINEAR,
 			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
 			.mipLodBias = 0.0f,
 			.anisotropyEnable = VK_FALSE,
 			.maxAnisotropy = 0.0f,
@@ -503,15 +571,6 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 
 	}
 
-	{
-		// light descriptor set:
-		VkDescriptorSetAllocateInfo alloc_info{
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			.descriptorPool = texture_descriptor_pool,
-			.descriptorSetCount = 1,
-			.pSetLayouts = &objects_pipeline.set10_Light
-		};
-	}
 
 	// camera
 	if (rtg.configuration.camera_name != "") {
@@ -2034,7 +2093,7 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 						if (rtg.scene.environments.empty()) {
 							continue;
 						}
-						std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors.back(), texture_descriptors[inst.normal_map] };
+						std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[lambertian_texture_index], texture_descriptors[inst.normal_map]};
 
 						vkCmdBindDescriptorSets(
 							workspace.command_buffer,
@@ -2066,7 +2125,7 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 				for (ObjectInstance const& inst : object_instances) {
 					uint32_t index = uint32_t(&inst - &object_instances[0]);
 					if (inst.texture_type == ObjectInstance::Type::PBR) {
-						std::array<VkDescriptorSet, 8> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors.back(), texture_descriptors[inst.normal_map], texture_descriptors[inst.roughness_map], texture_descriptors[inst.metalness_map], texture_descriptors[env_texture_index], texture_descriptors[lut_texture_index] };
+						std::array<VkDescriptorSet, 8> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[lambertian_texture_index], texture_descriptors[inst.normal_map], texture_descriptors[inst.roughness_map], texture_descriptors[inst.metalness_map], texture_descriptors[env_texture_index], texture_descriptors[lut_texture_index]};
 
 						vkCmdBindDescriptorSets(
 							workspace.command_buffer,
@@ -2616,7 +2675,7 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 
 				vec4 pos = WORLD_FROM_LOCAL * vec4{ 0.0f, 0.0f, 0.0f, 1.0f };
 
-				vec4 strength = vec4{ sphere.power * root->light->tint.r, sphere.power * root->light->tint.g, sphere.power * root->light->tint.b, 1.0f };
+				vec4 strength = vec4{ sphere.power * root->light->tint.r / (4 * float(M_PI)), sphere.power * root->light->tint.g / (4 * float(M_PI)), sphere.power * root->light->tint.b / (4 * float(M_PI)), 1.0f };
 
 				float radius = sphere.radius;
 
@@ -2637,7 +2696,7 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 
 				vec4 dir = WORLD_FROM_LOCAL_NORMAL * vec4{ 0.0f, 0.0f, -1.0f, 0.0f };
 
-				vec4 strength = vec4{ spot.power * root->light->tint.r, spot.power * root->light->tint.g, spot.power * root->light->tint.b, 1.0f };
+				vec4 strength = vec4{ spot.power * root->light->tint.r / (4 * float(M_PI)), spot.power * root->light->tint.g / (4 * float(M_PI)), spot.power * root->light->tint.b / (4 * float(M_PI)), 1.0f};
 
 				float radius = spot.radius;
 
@@ -3225,6 +3284,7 @@ void Viewer::load_textures() {
 			rgbe_to_e5b9g9r9(&image[j]);
 		}
 
+		lambertian_texture_index = static_cast<uint32_t>(textures.size());
 		textures.emplace_back(rtg.helpers.create_cubemap(
 			VkExtent2D{ .width = static_cast<uint32_t>(tex_width), .height = static_cast<uint32_t>(tex_height) / 6 },
 			VK_FORMAT_E5B9G9R9_UFLOAT_PACK32,

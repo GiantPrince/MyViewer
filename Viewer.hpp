@@ -398,10 +398,13 @@ struct Viewer : RTG::Application {
 	vec4 get_current_camera_position();
 
 	// env texture index
-	uint32_t env_texture_index = 0;
+	uint32_t env_texture_index = UINT32_MAX;
 
 	// lut texture index
-	uint32_t lut_texture_index = 0;
+	uint32_t lut_texture_index = UINT32_MAX;
+
+	// lambertian texture index
+	uint32_t lambertian_texture_index = UINT32_MAX;
 
 	// max mipmap level
 	uint32_t max_mipmap_level = 1;
