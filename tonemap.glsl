@@ -29,7 +29,7 @@ vec3 tonemap(vec3 color) {
 		tonemapped = reinhard_tonemap(exposed);
 	}
 	else {
-		tonemapped = exposed;
+		tonemapped = linear_tonemap(exposed);
 	}
 	return tonemapped;
 }

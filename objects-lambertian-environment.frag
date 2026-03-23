@@ -1,4 +1,5 @@
 #version 450
+#extension GL_EXT_nonuniform_qualifier : enable
 
 #include "tonemap.glsl"
 
@@ -15,6 +16,7 @@ layout(set=4, binding=0) uniform samplerCube ENV;
 layout(set=5, binding=0) uniform sampler2D NORMAL;
 
 struct Light{
+	mat4 CLIP_FROM_WORLD;
 	vec3 direction;
 	float angle;
 
@@ -27,12 +29,15 @@ struct Light{
 	float fov;
 	float blend;
 	uint type;
-	
+	uint shadowMapIndex;
+	//mat4 CLIP_FROM_WORLD;
 };
 
 layout(set=10, binding=0, std140) readonly buffer Lights{
 	Light lights[];
 };
+
+layout(set = 11, binding = 0) uniform sampler2DShadow shadowMaps[16];
 
 
 const int LIGHT_TYPE_SUN = 0;
@@ -128,12 +133,32 @@ void main() {
 			float nl = dot(tangent_normal, lightDir);
 			float sinTheta = lights[i].radius / max(distance, lights[i].radius);
 
-			e += lights[i].strength * computeHorizon(nl, sinTheta) * falloff(distance, lights[i].limit) * spotEffect;
+			float shadow = 1.0;
+			if (lights[i].shadowMapIndex != 0xFFFFFFFF) {
+				vec4 shadowCoord = lights[i].CLIP_FROM_WORLD * vec4(position, 1.0);
+				vec3 proj = shadowCoord.xyz / shadowCoord.w;				
+    
+				
+				vec3 uv_depth;
+				uv_depth.xy = proj.xy * 0.5 + 0.5;
+    
+				
+
+				
+				shadow = texture(shadowMaps[lights[i].shadowMapIndex], uv_depth);
+				
+			}
+			e += lights[i].strength * computeHorizon(nl, sinTheta) * falloff(distance, lights[i].limit) * spotEffect * shadow;
 		}
 	}
 
+
 	vec3 radiance = albedo * e / 3.1415926;
-	
+
+	//radiance = vec3(1.0) * textureProj(shadowMaps[lights[0].shadowMapIndex], lights[0].CLIP_FROM_WORLD * vec4(position, 1.0));
+	//float shadow = textureProj(shadowMaps[0],lights[0].CLIP_FROM_WORLD * vec4(position, 1.0));
+	//radiance += vec3(shadow * 0.000001);
+
 	vec3 tonemapped_color = tonemap(radiance);
 		
 	outColor = vec4(tonemapped_color, 1.0);

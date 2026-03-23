@@ -533,8 +533,17 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 
 			}
 
+			/*VkPhysicalDeviceVulkan12Features features12{
+				.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+				.pNext = nullptr,				
+				.shaderSampledImageArrayNonUniformIndexing = VK_TRUE,				
+				.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE,
+				.descriptorBindingPartiallyBound = VK_TRUE,
+				.runtimeDescriptorArray = VK_TRUE
+			};*/
+
 			VkDeviceCreateInfo device_create_info{
-				.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+				.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,				
 				.queueCreateInfoCount = static_cast<uint32_t>(queue_create_info.size()),
 				.pQueueCreateInfos = queue_create_info.data(),
 				.enabledLayerCount = 0,
@@ -669,7 +678,7 @@ void RTG::recreate_swapchain() {
 
 		//set extent from configuration
 		swapchain_extent = configuration.surface_extent;
-		swapchain_extent = VkExtent2D{ .width = 3840, .height = 2160  };
+		//swapchain_extent = VkExtent2D{ .width = 3840, .height = 2160  };
 
 		//set number of images to 3
 		uint32_t requested_count = 3;

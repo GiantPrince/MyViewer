@@ -32,7 +32,7 @@ const main_objs = [
 	maek.CPP('PosColVertex.cpp'),
 	maek.CPP('PosNorTexVertex.cpp'),
 	maek.CPP('Vertex.cpp'),		
-	maek.CPP('main.cpp'),
+	maek.CPP('main.cpp'),	
 	...rtg
 ];
 
@@ -64,6 +64,10 @@ const objects_shaders = [
 ];
 main_objs.push( maek.CPP('Tutorial-ObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 
+const shadow_map_shaders = [
+	maek.GLSLC('shadow.vert')
+];	
+main_objs.push( maek.CPP('Viewer-ShadowMapPipeline.cpp', undefined, { depends:[...shadow_map_shaders] } ) )
 
 const cube_objs = [
     maek.CPP('main-cube.cpp')    

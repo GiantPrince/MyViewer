@@ -96,8 +96,10 @@ struct Viewer : RTG::Application {
 		VkDescriptorSetLayout set9_BRDFLookupTable = VK_NULL_HANDLE;
 
 		VkDescriptorSetLayout set10_Light = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set11_ShadowMaps = VK_NULL_HANDLE;
 
 		struct Light {
+			mat4 CLIP_FROM_WORLD;
 			struct { float x, y, z; } direction;
 			float angle;
 
@@ -113,12 +115,12 @@ struct Viewer : RTG::Application {
 				SUN = 0,
 				SPHERE = 1,
 				SPOT = 2
-			} type;
-			//uint32_t type;
-			uint32_t padding_;				
+			} type;			
+			uint32_t shadow_map_index = UINT32_MAX;
+			
 		};
 		
-		static_assert(sizeof(Light) == 4 * 4 * 4, "Light is the expected size.");
+		static_assert(sizeof(Light) == 4 * 4 * 4 + 4 * 4 * 4, "Light is the expected size.");
 
 		struct Camera {
 			mat4 CLIP_FROM_WORLD;
@@ -164,6 +166,33 @@ struct Viewer : RTG::Application {
 		void destroy(RTG&);
 	} objects_pipeline;
 
+	struct ShadowMapPipeline {
+
+		VkDescriptorSetLayout set0_Transforms = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set1_Lights = VK_NULL_HANDLE;
+
+		struct Push {
+			uint32_t light_index;
+		};
+
+		struct Transform {			
+			mat4 WORLD_FROM_LOCAL;			
+		};
+		static_assert(sizeof(Transform) == 16 * 4, "Transform is the expected size.");
+
+		struct Light {
+			mat4 CLIP_FROM_WORLD;
+		};
+		static_assert(sizeof(Light) == 16 * 4, "Light is the expected size.");
+
+		VkPipeline handle = VK_NULL_HANDLE;
+
+		VkPipelineLayout layout = VK_NULL_HANDLE;
+
+		void create(RTG&, VkRenderPass, uint32_t subpass);
+		void destroy(RTG&);
+	} shadow_maps_pipeline;
+
 	//pools from which per-workspace things are allocated:
 	VkCommandPool command_pool = VK_NULL_HANDLE;
 	VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
@@ -193,12 +222,15 @@ struct Viewer : RTG::Application {
 		Helpers::AllocatedBuffer Transforms;
 		VkDescriptorSet Transforms_descriptors;
 
-		// Sun data
+		// Lights data
 		Helpers::AllocatedBuffer Lights_src;
 		Helpers::AllocatedBuffer Lights;
 		VkDescriptorSet Lights_descriptors;
 
-
+		// shadow map data		
+		Helpers::AllocatedBuffer Shadow_map_transforms_src;
+		Helpers::AllocatedBuffer Shadow_map_transforms;
+		VkDescriptorSet Shadow_map_transforms_descriptors;
 
 		bool ready_for_query = false;
 	};
@@ -327,6 +359,7 @@ struct Viewer : RTG::Application {
 	std::vector<ObjectInstance> object_instances;
 
 	std::vector<ObjectsPipeline::Light> lights;
+	std::vector<uint32_t> shadow_map_sizes;
 		
 	ObjectsPipeline::World world;
 
@@ -408,6 +441,31 @@ struct Viewer : RTG::Application {
 
 	// max mipmap level
 	uint32_t max_mipmap_level = 1;
+
+	// render shadow maps
+	void compute_shadow_maps(Workspace&);
+
+	// shadow map resources
+	struct ShadowMap {
+		Helpers::AllocatedImage depth_image;
+		VkImageView depth_image_view = VK_NULL_HANDLE;
+		mat4 LIGHT_CLIP_FROM_WORLD;
+		VkFramebuffer framebuffer = VK_NULL_HANDLE;
+		bool needs_update = false;
+		uint32_t light_index = UINT32_MAX;
+	};
+
+	VkDescriptorPool shadow_map_descriptor_pool = VK_NULL_HANDLE;
+	std::vector<ShadowMap> shadow_maps;
+	VkDescriptorSet shadow_map_descriptor = VK_NULL_HANDLE;
+	VkSampler shadow_map_sampler = VK_NULL_HANDLE;
+
+	// shadow map renderpass
+	VkRenderPass shadow_map_render_pass = VK_NULL_HANDLE;
+
+	// update shadow maps
+	void update_shadow_maps();	
+
 	//--------------------------------------------------------------------
 	//Rendering function, uses all the resources above to queue work to draw a frame:
 

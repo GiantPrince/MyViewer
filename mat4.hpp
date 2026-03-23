@@ -113,6 +113,21 @@ inline mat4 perspective(float vfov, float aspect, float near, float far) {
 	};
 }
 
+inline mat4 myperspective(float vfov, float aspect, float near, float far) {
+	const float f = far;
+	const float n = near;
+	const float g = 1.0f / std::tan(vfov / 2.0f);
+
+	// Vulkan 标准：Y 向下，Z 从 0 到 1
+	// 如果你希望保持 +y 是 Up，我们在这里直接处理
+	return mat4{
+		g / aspect, 0.0f,  0.0f,                 0.0f,
+		0.0f,      -g,     0.0f,                 0.0f, // 翻转Y以适配Vulkan
+		0.0f,       0.0f,  f / (n - f),         -1.0f, // Z 映射到 [0, 1]
+		0.0f,       0.0f,  (f * n) / (n - f),    0.0f
+	};
+}
+
 //look at matrix:
 // makes a camera-space-from-world matrix for a camera at eye looking toward
 // target with up-vector pointing (as-close-as-possible) along up.

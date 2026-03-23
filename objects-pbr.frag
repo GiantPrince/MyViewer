@@ -19,7 +19,10 @@ layout(set=7, binding=0) uniform sampler2D METALNESS;
 layout(set=8, binding=0) uniform samplerCube PRE_FILTERED_ENV;
 layout(set=9, binding=0) uniform sampler2D BRDF;
 
+
+
 struct Light{
+mat4 CLIP_FROM_WORLD;
 	vec3 direction;
 	float angle;
 
@@ -32,12 +35,16 @@ struct Light{
 	float fov;
 	float blend;
 	uint type;
+	uint shadowMapIndex;
+	
 	
 };
 
 layout(set=10, binding=0, std140) readonly buffer Lights{
 	Light lights[];
 };
+
+layout(set = 11, binding = 0) uniform sampler2DShadow shadowMaps[16];
 
 const int LIGHT_TYPE_SUN = 0;
 const int LIGHT_TYPE_SPHERE = 1;
@@ -154,6 +161,7 @@ void main() {
 	
 	vec3 albedo = texture(TEXTURE, texCoord).rgb;
 	float roughness = texture(ROUGHNESS, texCoord).r;
+	//roughness = max(0.15, roughness);
 	float metalness = texture(METALNESS, texCoord).r;
 		
 	vec3 tint = mix(vec3(0.04), albedo, metalness);
@@ -218,7 +226,18 @@ void main() {
 			float nl = dot(tangent_normal, lightDir);
 			float sinTheta = lights[i].radius / distance;
 
-			e += lights[i].strength * computeHorizon(nl, sinTheta) * falloff(distance, lights[i].limit) * spotEffect;
+			float shadow = 1.0;
+			if (lights[i].shadowMapIndex != 0xFFFFFFFF) {
+				vec4 shadowCoord = lights[i].CLIP_FROM_WORLD * vec4(position, 1.0);
+				vec3 proj = shadowCoord.xyz / shadowCoord.w;				    				
+				vec3 uv_depth;
+				uv_depth.xy = proj.xy * 0.5 + 0.5;
+				
+				shadow = texture(shadowMaps[lights[i].shadowMapIndex], uv_depth);
+
+			}
+
+			e += lights[i].strength * computeHorizon(nl, sinTheta) * falloff(distance, lights[i].limit) * spotEffect * shadow;
 
 			alpha_prime = clamp(alpha + lights[i].radius / distance / 2.0, 0.0, 1.0);
 		}
@@ -236,6 +255,7 @@ void main() {
 		float NdotH = clamp(dot(N, H), 0.0, 1.0);
 		float VdotH = clamp(dot(V, H), 0.0, 1.0);
 
+
 		float finalSpecEffect = 1.0;
 		if (lights[i].type == LIGHT_TYPE_SPOT) {
 			vec3 l = normalize(position - lights[i].position);
@@ -247,7 +267,19 @@ void main() {
 			finalSpecEffect = clamp((outerAngle - L_angle) / (outerAngle - innerAngle), 0.0, 1.0);
         			
 			float distance = length(lights[i].position - position);
-			finalSpecEffect *= falloff(distance, lights[i].limit);
+			float shadow = 1.0;
+			if (lights[i].shadowMapIndex != 0xFFFFFFFF) {
+				vec4 shadowCoord = lights[i].CLIP_FROM_WORLD * vec4(position, 1.0);
+				vec3 proj = shadowCoord.xyz / shadowCoord.w;				
+    				
+				vec3 uv_depth;
+				uv_depth.xy = proj.xy * 0.5 + 0.5; 
+    								
+				
+				shadow = texture(shadowMaps[lights[i].shadowMapIndex], uv_depth);
+
+			}
+			finalSpecEffect *= falloff(distance, lights[i].limit) * shadow;
 		} 
 		else if (lights[i].type == LIGHT_TYPE_SPHERE) {
 			float distance = length(lights[i].position - position);
@@ -260,8 +292,8 @@ void main() {
 		float D = D_GGX(NdotH, alpha_prime);
 		float G = G_Smith(NdotV, NdotL, roughness);
 		vec3  F = F_Schlick(VdotH, tint);
-		vec3 lightSpec = (D * G * F) / (4 * NdotV * NdotL) * (alpha / alpha_prime) * (alpha / alpha_prime);
-
+		vec3 lightSpec = (D * G * F) / max(4 * NdotV * NdotL, 0.01) * (alpha / alpha_prime) * (alpha / alpha_prime);
+		
 		
 		radiance += lightSpec * lights[i].strength * NdotL * finalSpecEffect;
 		}
