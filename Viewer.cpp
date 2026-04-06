@@ -4,6 +4,8 @@
 
 #include "Timer.hpp"
 
+#include "Physics.hpp"
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.hpp"
 
@@ -1500,6 +1502,27 @@ vec4 Viewer::interpolate(const vec4& start, const vec4& end, float t, S72::Drive
 	}
 }
 
+void Viewer::update_physics(float dt)
+{
+	for (auto& node : rtg.scene.nodes) {
+		if (node.second.rigidbody == nullptr) {
+			continue;
+		}
+
+		if (physics_data.find(node.first) == physics_data.end()) {
+			physics_data[node.first] = PhysicsData{
+			.position = { node.second.translation.x, node.second.translation.y, node.second.translation.z },
+			.velocity = { node.second.rigidbody->initial_velocity.x, node.second.rigidbody->initial_velocity.y, node.second.rigidbody->initial_velocity.z },
+			.rotation = { node.second.rotation.x, node.second.rotation.y, node.second.rotation.z, node.second.rotation.w },
+			};
+		}
+
+		auto& data = physics_data[node.first];
+		data.position = Physics::apply_velocity(data.position, data.velocity, dt);
+		data.velocity = Physics::apply_gravity(data.velocity, dt);
+	}
+}
+
 S72::color Viewer::srgb_to_linear(const S72::color& c)
 {
 	auto srgb_to_linear_channel = [](float channel) {
@@ -2834,6 +2857,8 @@ void Viewer::update(float dt) {
 
 	update_driver_channels(dt);
 
+	update_physics(dt);
+
 	{
 		Timer timer([](double time) { std::cout << "Time spent on scene graph traversal: " << time * 1000 << "ms" << std::endl; });
 		load_objects();
@@ -3210,7 +3235,12 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 				sy = channel.scale.y;
 				sz = channel.scale.z;
 			}
+		}
 
+		if (root->rigidbody != nullptr) {
+			tx = physics_data[root->name].position.x;
+			ty = physics_data[root->name].position.y;
+			tz = physics_data[root->name].position.z;
 		}
 
 
@@ -3490,6 +3520,8 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 			}
 
 		}
+
+		
 
 		stack.pop();
 

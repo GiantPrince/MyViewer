@@ -33,6 +33,7 @@ const main_objs = [
 	maek.CPP('PosNorTexVertex.cpp'),
 	maek.CPP('Vertex.cpp'),		
 	maek.CPP('main.cpp'),	
+	maek.CPP('Physics.cpp'),
 	...rtg
 ];
 

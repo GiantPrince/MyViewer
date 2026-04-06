@@ -5,6 +5,7 @@
 #include "PosColVertex.hpp"
 #include "Vertex.hpp"
 #include "PosNorTexVertex.hpp"
+#include "Physics.hpp"
 #include "mat4.hpp"
 
 #include <GLFW/glfw3.h>
@@ -399,6 +400,8 @@ struct Viewer : RTG::Application {
 	std::pair<uint32_t, uint32_t> find_time_interval(const std::vector<float>& times, float t);
 	vec4 interpolate(const vec4& start, const vec4& end, float t, S72::Driver::Interpolation interpolation);
 
+	void update_physics(float dt);
+
 	float playback_rate = 1.0f;
 	
 	class DriverChannelType {
@@ -415,6 +418,16 @@ struct Viewer : RTG::Application {
 		S72::quat rotation;
 	};
 	std::unordered_map <std::string, DriverValue> driver_channel_values;
+
+	struct PhysicsData {		
+		Physics::vec3 position;
+		Physics::vec3 velocity;
+		S72::quat rotation;
+	};
+
+	std::unordered_map<std::string, PhysicsData> physics_data;
+
+
 
 	S72::color srgb_to_linear(const S72::color& c);
 

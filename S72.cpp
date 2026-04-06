@@ -462,6 +462,18 @@ S72 S72::load(std::string const& scene_file) {
 				object.erase(f);
 			}
 
+			// rigidbodies
+			if (auto f = object.find("rigidbody"); f != object.end()) {
+				std::string ref;
+				try {
+					ref = f->second.as_string().value();
+				}
+				catch (std::exception&) {
+					throw std::runtime_error("Node \"" + name + "\"'s rigidbody should be a string.");
+				}
+				node.rigidbody = &s72.rigidbodies[ref];
+			}
+
 		}
 		else if (type == "MESH") {
 			//reference to the thing we are parsing into:
@@ -988,6 +1000,59 @@ S72 S72::load(std::string const& scene_file) {
 			if (!have_source) {
 				throw std::runtime_error("Light \"" + name + "\" is missing a source.");
 			}
+		}
+		else if (type == "RIGIDBODY") {
+			RigidBody& rigidbody = s72.rigidbodies[name];
+
+			// check we have not yet parsed it
+			if (rigidbody.name != "") {
+				throw std::runtime_error("Multiple \"RIGIDBODY\" objects with name \"" + name + "\".");
+			}
+
+			// mark as parsed
+			rigidbody.name = name;
+
+			rigidbody.mass = extract_float(&object, "mass", "RIGIDBODY \"" + name + "\"'s mass");
+
+			if (auto f = object.find("use_gravity"); f != object.end()) {
+				bool use_gravity;
+				try {
+					use_gravity = f->second.as_bool().value();
+				}
+				catch (std::exception&) {
+					throw std::runtime_error("Rigidbody \"" + name + "\"'s use_gravity is not a boolean value.");
+				}
+				rigidbody.use_gravity = use_gravity;
+				object.erase(f);
+			}
+
+			if (auto f = object.find("is_static"); f != object.end()) {
+				bool is_static;
+				try {
+					is_static = f->second.as_bool().value();
+				}
+				catch (std::exception&) {
+					throw std::runtime_error("Rigidbody \"" + name + "\"'s is_static is not a boolean value.");
+				}
+				rigidbody.is_static = is_static;
+				object.erase(f);
+			}
+
+			if (auto f = object.find("initial_velocity"); f != object.end()) {
+				try {
+					std::vector< sejp::value > const& vec = f->second.as_array().value();
+					rigidbody.initial_velocity = vec3{
+						.x = float(vec.at(0).as_number().value()),
+						.y = float(vec.at(1).as_number().value()),
+						.z = float(vec.at(2).as_number().value()),
+					};
+					if (vec.size() != 3) throw std::runtime_error("trailing values");
+				}
+				catch (std::exception&) {
+					throw std::runtime_error("RIGIDBODY \"" + name + "\"'s initial_velocity should be an array of three numbers.");
+				}
+				object.erase(f);			
+			}			
 		}
 		else {
 			std::cerr << "WARNING: ignoring object \"" << name << "\" of unrecognized type \"" << type << "\"." << std::endl;

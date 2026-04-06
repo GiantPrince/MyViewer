@@ -67,6 +67,7 @@ struct S72 {
 	struct Material;
 	struct Environment;
 	struct Light;
+	struct RigidBody;
 
 	//-------------------------------------------------
 	//s72 Scenes contain:
@@ -93,6 +94,7 @@ struct S72 {
 		Camera* camera = nullptr;
 		Environment* environment = nullptr;
 		Light* light = nullptr;
+		RigidBody* rigidbody = nullptr;
 	};
 	std::unordered_map< std::string, Node > nodes;
 
@@ -255,4 +257,16 @@ struct S72 {
 		std::variant< Sun, Sphere, Spot > source;
 	};
 	std::unordered_map< std::string, Light > lights;
+
+	// Rigid bodies
+	struct RigidBody {
+		std::string name;
+		float mass;
+		vec3 initial_velocity = vec3{ .x = 0.0f, .y = 0.0f, .z = 0.0f }; //optional, will be zero if not specified
+		bool use_gravity = true; //optional, will be true if not specified
+		bool is_static = false; //optional, will be false if not specified 
+	};
+	std::unordered_map< std::string, RigidBody > rigidbodies;
+
+
 };
