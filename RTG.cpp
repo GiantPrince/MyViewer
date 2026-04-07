@@ -155,6 +155,9 @@ void RTG::Configuration::parse(int argc, char** argv) {
 					throw std::runtime_error("Unrecognized tone operator '" + tone_op + "'.");
 				}
 			}
+			else if (arg == "--show-colliders") {
+				show_colliders = true;
+			}
 			else {
 				throw std::runtime_error("Unrecognized argument '" + arg + "'.");
 			}
@@ -173,6 +176,7 @@ void RTG::Configuration::usage(std::function< void(const char*, const char*) > c
 	callback("--camera <name>", "Set the initial scene camera to be the one named <name>.");
 	callback("--profile", "Enable profiling on GPU.");
 	callback("--indexed", "Enable indexed mesh.");
+	callback("--show-colliders", "Show colliders as wireframe boxes.");
 }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(

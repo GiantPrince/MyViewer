@@ -372,7 +372,7 @@ struct Viewer : RTG::Application {
 	void load_objects();
 	void load_objects(const S72::Node* root, const mat4& world_from_local, const mat4& world_from_local_normal);
 	void render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, const mat4& world_from_local_normal);
-
+	void render_box(const mat4& world_from_local, float extent_x, float extent_y, float extent_z);
 	// loading all textures
 	void load_textures();
 

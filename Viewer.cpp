@@ -3241,6 +3241,8 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 			tx = physics_data[root->name].position.x;
 			ty = physics_data[root->name].position.y;
 			tz = physics_data[root->name].position.z;
+
+			
 		}
 
 
@@ -3262,6 +3264,33 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 
 		const mat4 WORLD_FROM_LOCAL = world_from_local * parent_from_local;
 		const mat4 WORLD_FROM_LOCAL_NORMAL = world_from_local_normal * parent_from_local_normal;
+
+		if (root->rigidbody != nullptr && root->rigidbody->collider != nullptr) {
+			S72::Collider* collider = root->rigidbody->collider;
+			if (std::holds_alternative<S72::Collider::Box>(collider->shape)) {
+				S72::Collider::Box box = std::get<S72::Collider::Box>(collider->shape);
+				float ctx = collider->offset.translation.x;
+				float cty = collider->offset.translation.y;
+				float ctz = collider->offset.translation.z;
+
+				float crx = collider->offset.rotation.x;
+				float cry = collider->offset.rotation.y;
+				float crz = collider->offset.rotation.z;
+				float crw = collider->offset.rotation.w;
+
+				const mat4 collider_parent_from_local = mat4{
+					(1 - 2 * (cry * cry + crz * crz)),	2 * (crx * cry + crw * crz),	2 * (crx * crz - crw * cry),	0.0f,
+					2 * (crx * cry - crw * crz),	(1 - 2 * (crx * crx + crz * crz)),	2 * (cry * crz + crw * crx),	0.0f,
+					2 * (crx * crz + crw * cry),	2 * (cry * crz - crw * crx),	(1 - 2 * (crx * crx + cry * cry)),	0.0f,
+					ctx,	cty,	ctz,	1.0f
+				};
+
+				render_box(WORLD_FROM_LOCAL * collider_parent_from_local, box.extents.x, box.extents.y, box.extents.z);
+
+			}
+			
+		}
+
 
 		if ((camera_mode == CameraMode::Scene || previous_camera_mode == CameraMode::Scene) && root->camera != nullptr) {
 			if (rtg.configuration.camera_name != "" && root->camera->name != rtg.configuration.camera_name) {
@@ -3644,6 +3673,42 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 			});
 	}
 
+}
+
+void Viewer::render_box(const mat4& world_from_local, float extent_x, float extent_y, float extent_z)
+{
+	extent_x /= 2;
+	extent_y /= 2;
+	extent_z /= 2;
+
+	vec4 corners[] = {
+		vec4{ -extent_x, -extent_y, -extent_z, 1.0f },
+		vec4{ extent_x, -extent_y, -extent_z, 1.0f },
+		vec4{ -extent_x, extent_y, -extent_z, 1.0f },
+		vec4{ extent_x, extent_y, -extent_z, 1.0f },
+		vec4{ -extent_x, -extent_y, extent_z, 1.0f },
+		vec4{ extent_x, -extent_y, extent_z, 1.0f },
+		vec4{ -extent_x, extent_y, extent_z, 1.0f },
+		vec4{ extent_x, extent_y, extent_z, 1.0f },
+	};
+
+	for (int i = 0; i < 8; i++) {
+		corners[i] = world_from_local * corners[i];
+	}
+
+	int edges[12][2] = {
+	{0,1},{1,3},{3,2},{2,0}, 
+	{4,5},{5,7},{7,6},{6,4}, 
+	{0,4},{1,5},{2,6},{3,7} 
+	};
+
+	for (int i = 0; i < 12; i++) {
+		int a = edges[i][0];
+		int b = edges[i][1];
+		lines_vertices.emplace_back(PosColVertex{ .Position = {corners[a][0], corners[a][1], corners[a][2]}, .Color = {1,1,1,1} });
+		lines_vertices.emplace_back(PosColVertex{ .Position = {corners[b][0], corners[b][1], corners[b][2]}, .Color = {1,1,1,1} });
+	}
+		
 }
 
 

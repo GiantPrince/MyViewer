@@ -68,6 +68,7 @@ struct S72 {
 	struct Environment;
 	struct Light;
 	struct RigidBody;
+	struct Collider;
 
 	//-------------------------------------------------
 	//s72 Scenes contain:
@@ -265,8 +266,33 @@ struct S72 {
 		vec3 initial_velocity = vec3{ .x = 0.0f, .y = 0.0f, .z = 0.0f }; //optional, will be zero if not specified
 		bool use_gravity = true; //optional, will be true if not specified
 		bool is_static = false; //optional, will be false if not specified 
+
+		Collider* collider;
 	};
 	std::unordered_map< std::string, RigidBody > rigidbodies;
 
+	// Colliders
+	struct Collider {
+		std::string name;
+		//RigidBody* rigidbody; //the rigidbody this collider is attached to
+
+		struct Offset {
+			vec3 translation = vec3{ .x = 0.0f, .y = 0.0f, .z = 0.0f };
+			quat rotation = quat{ .x = 0.0f, .y = 0.0f, .z = 0.0f, .w = 1.0f };
+		};
+
+		Offset offset;
+
+		struct Box {
+			vec3 extents;
+		};
+
+		struct Sphere {
+			float radius;
+		};
+
+		std::variant< Box, Sphere > shape;
+	};
+	std::unordered_map< std::string, Collider > colliders;
 
 };

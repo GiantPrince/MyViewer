@@ -1052,7 +1052,94 @@ S72 S72::load(std::string const& scene_file) {
 					throw std::runtime_error("RIGIDBODY \"" + name + "\"'s initial_velocity should be an array of three numbers.");
 				}
 				object.erase(f);			
-			}			
+			}	
+
+			rigidbody.collider = &s72.colliders[extract_string(&object, "collider", "RIGIDBODY \"" + name + "\"'s collider")];
+		}
+		else if (type == "COLLIDER") {
+			Collider& collider = s72.colliders[name];
+			if (collider.name != "") {
+				throw std::runtime_error("Multiple \"COLLIDER\" objects with name \"" + name + "\".");
+			}
+
+			collider.name = name;
+
+			if (auto f = object.find("offset"); f != object.end()) {
+				std::map< std::string, sejp::value > obj;
+				try {
+					obj = f->second.as_object().value();
+				}
+				catch (std::exception&) {
+					throw std::runtime_error("Collider \"" + name + "\"'s offset is not an object.");
+				}
+
+				std::vector<float> translation = extract_float_vector(&obj, "translation", "Collider \"" + name + "\"'s box's translation");
+				if (translation.size() != 3) {
+					throw std::runtime_error("Collider \"" + name + "\"'s box's translation should have exactly three numbers.");
+				}
+
+				std::vector<float> rotation = extract_float_vector(&obj, "rotation", "Collider \"" + name + "\"'s box's rotation");
+				if (rotation.size() != 4) {
+					throw std::runtime_error("Collider \"" + name + "\"'s box's rotation should have exactly four numbers.");
+				}
+
+				collider.offset.translation = vec3{
+					.x = translation[0],
+					.y = translation[1],
+					.z = translation[2],
+				};
+
+				collider.offset.rotation = quat{
+					.x = rotation[0],
+					.y = rotation[1],
+					.z = rotation[2],
+					.w = rotation[3],
+				};
+
+				warn_on_unhandled(obj, "Collider \"" + name + "\"'s offset");
+				object.erase(f);
+			}
+
+
+			bool have_shape = false;
+
+
+
+			
+			if (auto f = object.find("box"); f != object.end()) {
+				if (have_shape) {
+					throw std::runtime_error("Collider \"" + name + "\" has multiple shapes.");
+				}
+				have_shape = true;
+
+				std::map< std::string, sejp::value > obj;
+				try {
+					obj = f->second.as_object().value();
+				}
+				catch (std::exception&) {
+					throw std::runtime_error("Collider \"" + name + "\"'s box is not an object.");
+				}
+				
+				Collider::Box box;
+				
+				std::vector<float> extents = extract_float_vector(&obj, "extents", "Collider \"" + name + "\"'s box's extents");
+
+				if (extents.size() != 3) {
+					throw std::runtime_error("Collider \"" + name + "\"'s box's extents should have exactly three numbers.");
+				}
+
+				box.extents = vec3{
+					.x = extents[0],
+					.y = extents[1],
+					.z = extents[2],
+				};
+				
+				collider.shape = box;
+				warn_on_unhandled(obj, "Collider \"" + name + "\"'s box");
+				object.erase(f);
+			}
+
+			
 		}
 		else {
 			std::cerr << "WARNING: ignoring object \"" << name << "\" of unrecognized type \"" << type << "\"." << std::endl;

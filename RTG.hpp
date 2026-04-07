@@ -116,6 +116,8 @@ struct RTG {
 		std::string in_cubemap_file = "";
 		std::string out_cubemap_file = "";
 
+		bool show_colliders = false;
+
 		//for configuration construction + management:
 		Configuration() = default;
 		void parse(int argc, char **argv); //parse command-line options; throws on error
