@@ -1051,10 +1051,24 @@ S72 S72::load(std::string const& scene_file) {
 				catch (std::exception&) {
 					throw std::runtime_error("RIGIDBODY \"" + name + "\"'s initial_velocity should be an array of three numbers.");
 				}
-				object.erase(f);			
-			}	
+				object.erase(f);
+			}
+
+			if (auto f = object.find("friction"); f != object.end()) {
+				float friction = 1.0f;
+				try {
+					friction = static_cast<float>(f->second.as_number().value());
+
+				}
+				catch (std::exception&) {
+					throw std::runtime_error("RIGIDBODY \"" + name + "\"'s friction should be a number.");
+				}
+				rigidbody.friction = friction;
+				object.erase(f);
+			}
 
 			rigidbody.collider = &s72.colliders[extract_string(&object, "collider", "RIGIDBODY \"" + name + "\"'s collider")];
+
 		}
 		else if (type == "COLLIDER") {
 			Collider& collider = s72.colliders[name];
@@ -1103,9 +1117,6 @@ S72 S72::load(std::string const& scene_file) {
 
 			bool have_shape = false;
 
-
-
-			
 			if (auto f = object.find("box"); f != object.end()) {
 				if (have_shape) {
 					throw std::runtime_error("Collider \"" + name + "\" has multiple shapes.");
@@ -1119,9 +1130,9 @@ S72 S72::load(std::string const& scene_file) {
 				catch (std::exception&) {
 					throw std::runtime_error("Collider \"" + name + "\"'s box is not an object.");
 				}
-				
+
 				Collider::Box box;
-				
+
 				std::vector<float> extents = extract_float_vector(&obj, "extents", "Collider \"" + name + "\"'s box's extents");
 
 				if (extents.size() != 3) {
@@ -1133,19 +1144,105 @@ S72 S72::load(std::string const& scene_file) {
 					.y = extents[1],
 					.z = extents[2],
 				};
-				
+
 				collider.shape = box;
 				warn_on_unhandled(obj, "Collider \"" + name + "\"'s box");
 				object.erase(f);
 			}
+			if (auto f = object.find("sphere"); f != object.end()) {
+				if (have_shape) {
+					throw std::runtime_error("Collider \"" + name + "\" has multiple shapes.");
+				}
+				have_shape = true;
+
+				std::map< std::string, sejp::value > obj;
+				try {
+					obj = f->second.as_object().value();
+				}
+				catch (std::exception&) {
+					throw std::runtime_error("Collider \"" + name + "\"'s sphere is not an object.");
+				}
+
+				Collider::Sphere sphere;
+				sphere.radius = extract_float(&obj, "radius", "Collider \"" + name + "\"'s sphere's radius");
+
+
+				collider.shape = sphere;
+				warn_on_unhandled(obj, "Collider \"" + name + "\"'s sphere");
+				object.erase(f);
+			}
+
+
+		}
+		else if (type == "JOINTCONSTRAINT") {
+			JointConstraint& jointConstraint = s72.jointConstraints[name];
+			if (jointConstraint.name != "") {
+				throw std::runtime_error("Multiple \"JOINTCONSTRAINT\" objects with name \"" + name + "\".");
+			}
+
+			jointConstraint.name = name;
+			
+			std::string rigidbodyA = extract_string(&object, "rigidbodyA", "JointConstraint's rigidbodyA");
+			jointConstraint.rigidbodyA = &s72.rigidbodies[rigidbodyA];
 
 			
+			std::string rigidbodyB = extract_string(&object, "rigidbodyB", "JointConstraint's rigidbodyB");
+			jointConstraint.rigidbodyB = &s72.rigidbodies[rigidbodyB];
+			
+			{				
+				auto offsetA = extract_float_vector(&object, "offsetA", "JointConstraint's offsetA");
+				if (offsetA.size() != 3) {
+					throw std::runtime_error("JointConstraint \"" + name + "\"'s offsetA does not have exactly three floats.");
+				}
+				jointConstraint.offsetA = vec3{ .x = offsetA[0], .y = offsetA[1], .z = offsetA[2] };
+			}
+			{
+				auto offsetB = extract_float_vector(&object, "offsetB", "JointConstraint's offsetB");
+				if (offsetB.size() != 3) {
+					throw std::runtime_error("JointConstraint \"" + name + "\"'s offsetB does not have exactly three floats.");
+				}
+				jointConstraint.offsetA = vec3{ .x = offsetB[0], .y = offsetB[1], .z = offsetB[2] };
+			}
+
+			if (auto f = object.find("stiffnessLin"); f != object.end()) {				
+				try {
+					float stiffnessLin = static_cast<float>(f->second.as_number().value());
+					jointConstraint.stiffnessLin = stiffnessLin;
+				}
+				catch (std::exception&) {
+					throw std::runtime_error("JointConstraint \"" + name + "\"'s stiffnessLin is not a float.");
+				}
+				object.erase(f);
+			}
+			if (auto f = object.find("stiffnessAng"); f != object.end()) {
+				try {
+					float stiffnessAng = static_cast<float>(f->second.as_number().value());
+					jointConstraint.stiffnessAng = stiffnessAng;
+				}
+				catch (std::exception&) {
+					throw std::runtime_error("JointConstraint \"" + name + "\"'s stiffnessAng is not a float.");
+				}
+				object.erase(f);
+			}
+
+			if (auto f = object.find("fracture"); f != object.end()) {
+				try {
+					float fracture = static_cast<float>(f->second.as_number().value());
+					jointConstraint.fracture = fracture;
+				}
+				catch (std::exception&) {
+					throw std::runtime_error("JointConstraint \"" + name + "\"'s fracture is not a float.");
+				}
+				object.erase(f);
+			}
+		
 		}
 		else {
 			std::cerr << "WARNING: ignoring object \"" << name << "\" of unrecognized type \"" << type << "\"." << std::endl;
 		}
 		warn_on_unhandled(object, "Object \"" + name + "\"");
 	}
+	
 
 
 	//-----------------------------------------------------------------------
@@ -1178,7 +1275,7 @@ S72 S72::load(std::string const& scene_file) {
 		}
 		std::vector<char> content(std::istreambuf_iterator<char>(binary_data), {});
 
-		value.content = std::move(content);		
+		value.content = std::move(content);
 	}
 
 	return s72;

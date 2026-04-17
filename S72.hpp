@@ -266,7 +266,7 @@ struct S72 {
 		vec3 initial_velocity = vec3{ .x = 0.0f, .y = 0.0f, .z = 0.0f }; //optional, will be zero if not specified
 		bool use_gravity = true; //optional, will be true if not specified
 		bool is_static = false; //optional, will be false if not specified 
-
+		float friction = 1.0f;
 		Collider* collider;
 	};
 	std::unordered_map< std::string, RigidBody > rigidbodies;
@@ -294,5 +294,18 @@ struct S72 {
 		std::variant< Box, Sphere > shape;
 	};
 	std::unordered_map< std::string, Collider > colliders;
+
+	// joint constraints
+	struct JointConstraint {
+		std::string name;
+		RigidBody* rigidbodyA;
+		RigidBody* rigidbodyB;
+		vec3 offsetA;
+		vec3 offsetB;
+		float stiffnessLin = std::numeric_limits<float>::infinity();
+		float stiffnessAng = 0;
+		float fracture = std::numeric_limits<float>::infinity();
+	};
+	std::unordered_map< std::string, JointConstraint > jointConstraints;
 
 };
