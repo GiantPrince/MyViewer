@@ -1,4 +1,4 @@
-#include "Viewer.hpp"
+﻿#include "Viewer.hpp"
 
 #include "VK.hpp"
 
@@ -19,10 +19,85 @@
 #include <iostream>
 #include <stack>
 
+float3x3 extractFloat3x3(const mat4& m) {
+	float3x3 rot;
+
+
+	rot[0][0] = m[0 * 4 + 0];
+	rot[0][1] = m[1 * 4 + 0];
+	rot[0][2] = m[2 * 4 + 0];
+
+	rot[1][0] = m[0 * 4 + 1];
+	rot[1][1] = m[1 * 4 + 1];
+	rot[1][2] = m[2 * 4 + 1];
+
+	rot[2][0] = m[0 * 4 + 2];
+	rot[2][1] = m[1 * 4 + 2];
+	rot[2][2] = m[2 * 4 + 2];
+	
+	for (int i = 0; i < 3; i++) {
+		float len = sqrtf(
+			rot[i][0] * rot[i][0] +
+			rot[i][1] * rot[i][1] +
+			rot[i][2] * rot[i][2]
+		);
+
+		if (len > 1e-8f) {
+			rot[i][0] /= len;
+			rot[i][1] /= len;
+			rot[i][2] /= len;
+		}
+	}
+
+	return rot;
+}
+
+quat float3x3ToQuat(const float3x3& m) {
+	float trace = m[0][0] + m[1][1] + m[2][2];
+
+	quat q;
+
+	if (trace > 0.0f)
+	{
+		float s = sqrtf(trace + 1.0f) * 2.0f;
+		q.w = 0.25f * s;
+		q.x = (m[2][1] - m[1][2]) / s;
+		q.y = (m[0][2] - m[2][0]) / s;
+		q.z = (m[1][0] - m[0][1]) / s;
+	}
+	else if (m[0][0] > m[1][1] && m[0][0] > m[2][2])
+	{
+		float s = sqrtf(1.0f + m[0][0] - m[1][1] - m[2][2]) * 2.0f;
+		q.w = (m[2][1] - m[1][2]) / s;
+		q.x = 0.25f * s;
+		q.y = (m[0][1] + m[1][0]) / s;
+		q.z = (m[0][2] + m[2][0]) / s;
+	}
+	else if (m[1][1] > m[2][2])
+	{
+		float s = sqrtf(1.0f + m[1][1] - m[0][0] - m[2][2]) * 2.0f;
+		q.w = (m[0][2] - m[2][0]) / s;
+		q.x = (m[0][1] + m[1][0]) / s;
+		q.y = 0.25f * s;
+		q.z = (m[1][2] + m[2][1]) / s;
+	}
+	else
+	{
+		float s = sqrtf(1.0f + m[2][2] - m[0][0] - m[1][1]) * 2.0f;
+		q.w = (m[1][0] - m[0][1]) / s;
+		q.x = (m[0][2] + m[2][0]) / s;
+		q.y = (m[1][2] + m[2][1]) / s;
+		q.z = 0.25f * s;
+	}
+
+	return q;
+}
 
 
 Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 	//refsol::Tutorial_constructor(rtg, &depth_format, &render_pass, &command_pool);
+	solver = std::make_unique<Solver>();
+
 	depth_format = rtg.helpers.find_image_format(
 		{ VK_FORMAT_D32_SFLOAT, VK_FORMAT_X8_D24_UNORM_PACK32 },
 		VK_IMAGE_TILING_OPTIMAL,
@@ -186,6 +261,7 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 	lines_pipeline.create(rtg, render_pass, 0);
 	objects_pipeline.create(rtg, render_pass, 0);
 	shadow_maps_pipeline.create(rtg, shadow_map_render_pass, 0);
+	avbd_pipeline.create(rtg, render_pass, 0);
 
 	{
 		uint32_t per_workspace = static_cast<uint32_t>(rtg.workspaces.size());
@@ -197,19 +273,128 @@ Viewer::Viewer(RTG& rtg_) : rtg(rtg_) {
 			},
 			VkDescriptorPoolSize{
 				.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-				.descriptorCount = 2 * per_workspace
+				.descriptorCount = 2 * per_workspace + 5
 			}
 		};
 
 		VkDescriptorPoolCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			.flags = 0,
-			.maxSets = per_workspace * 5,
+			.maxSets = per_workspace * 5 + 5,
 			.poolSizeCount = static_cast<uint32_t>(pool_sizes.size()),
 			.pPoolSizes = pool_sizes.data()
 		};
 
 		VK(vkCreateDescriptorPool(rtg.device, &create_info, nullptr, &descriptor_pool));
+
+	}
+
+	// AVBD init
+	{	// command buffer
+		{
+			VkCommandBufferAllocateInfo alloc_info{
+			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+			.commandPool = command_pool,
+			.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+			.commandBufferCount = 1
+			};
+
+			VK(vkAllocateCommandBuffers(rtg.device, &alloc_info, &avbd.command_buffer));
+		}
+		
+
+		// descs
+		{
+			VkDescriptorSetAllocateInfo alloc_info{
+				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+				.descriptorPool = descriptor_pool,
+				.descriptorSetCount = 1,
+				.pSetLayouts = &avbd_pipeline.set0_Rigids
+			};
+
+			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &avbd.Rigidbodies_descriptors));
+		}
+
+		{
+			VkDescriptorSetAllocateInfo alloc_info{
+				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+				.descriptorPool = descriptor_pool,
+				.descriptorSetCount = 1,
+				.pSetLayouts = &avbd_pipeline.set1_UpdatedRigids
+			};
+
+			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &avbd.UpdatedRigidbodies_descriptors));
+		}
+
+		{
+			VkDescriptorSetAllocateInfo alloc_info{
+				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+				.descriptorPool = descriptor_pool,
+				.descriptorSetCount = 1,
+				.pSetLayouts = &avbd_pipeline.set2_Manifolds
+			};
+
+			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &avbd.Manifolds_descriptors));
+		}
+
+		{
+			VkDescriptorSetAllocateInfo alloc_info{
+				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+				.descriptorPool = descriptor_pool,
+				.descriptorSetCount = 1,
+				.pSetLayouts = &avbd_pipeline.set3_Colors
+			};
+
+			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &avbd.Colors_descriptors));
+		}
+
+		{
+			VkDescriptorSetAllocateInfo alloc_info{
+				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+				.descriptorPool = descriptor_pool,
+				.descriptorSetCount = 1,
+				.pSetLayouts = &avbd_pipeline.set4_Counter
+			};
+
+			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &avbd.Counter_descriptors));
+
+
+		}
+
+		{
+			avbd.Counter = rtg.helpers.create_buffer(
+				sizeof(AVBD::Counter),
+				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				Helpers::Unmapped
+			);
+
+			VkDescriptorBufferInfo Counter_info{
+					.buffer = avbd.Counter.handle,
+					.offset = 0,
+					.range = avbd.Counter.size
+			};
+
+			std::array<VkWriteDescriptorSet, 1> writes{
+				VkWriteDescriptorSet{
+					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+					.dstSet = avbd.Counter_descriptors,
+					.dstBinding = 0,
+					.dstArrayElement = 0,
+					.descriptorCount = 1,
+					.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+					.pBufferInfo = &Counter_info
+				}
+			};
+
+			vkUpdateDescriptorSets(
+				rtg.device,
+				uint32_t(writes.size()),
+				writes.data(),
+				0, nullptr
+			);
+		}
+
 
 	}
 
@@ -740,6 +925,7 @@ Viewer::~Viewer() {
 	rtg.helpers.destroy_buffer(std::move(mesh_vertex_buffer));
 	rtg.helpers.destroy_buffer(std::move(mesh_indices_buffer));
 
+
 	if (swapchain_depth_image.handle != VK_NULL_HANDLE) {
 		destroy_framebuffers();
 	}
@@ -837,6 +1023,36 @@ Viewer::~Viewer() {
 	lines_pipeline.destroy(rtg);
 	objects_pipeline.destroy(rtg);
 	shadow_maps_pipeline.destroy(rtg);
+	avbd_pipeline.destroy(rtg);
+
+	if (avbd.command_buffer != VK_NULL_HANDLE) {
+		vkFreeCommandBuffers(rtg.device, command_pool, 1, &avbd.command_buffer);
+		avbd.command_buffer = VK_NULL_HANDLE;
+	}
+
+	if (avbd.Colors.handle != VK_NULL_HANDLE) {
+		rtg.helpers.destroy_buffer(std::move(avbd.Colors));
+	}
+
+	if (avbd.Counter.handle != VK_NULL_HANDLE) {
+		rtg.helpers.destroy_buffer(std::move(avbd.Counter));
+	}
+
+	if (avbd.Manifolds.handle != VK_NULL_HANDLE) {
+		rtg.helpers.destroy_buffer(std::move(avbd.Manifolds));
+	}
+
+	if (avbd.Rigidbodies_cpu.handle != VK_NULL_HANDLE) {
+		rtg.helpers.destroy_buffer(std::move(avbd.Rigidbodies_cpu));
+	}
+
+	if (avbd.Rigidbodies.handle != VK_NULL_HANDLE) {
+		rtg.helpers.destroy_buffer(std::move(avbd.Rigidbodies));
+	}
+
+	if (avbd.UpdatedRigidbodies.handle != VK_NULL_HANDLE) {
+		rtg.helpers.destroy_buffer(std::move(avbd.UpdatedRigidbodies));
+	}
 
 	if (command_pool != VK_NULL_HANDLE) {
 		vkDestroyCommandPool(rtg.device, command_pool, nullptr);
@@ -1502,25 +1718,51 @@ vec4 Viewer::interpolate(const vec4& start, const vec4& end, float t, S72::Drive
 	}
 }
 
+
+
+void Viewer::initializeJointConstraint()
+{	
+	for (const auto& joint : rtg.scene.jointConstraints) {
+		vector<Rigid*> rigidbodyA;
+		vector<Rigid*> rigidbodyB;
+		for (const auto& data : physics_data) {
+			if (data.second.s72Rigidbody == joint.second.rigidbodyA) {
+				rigidbodyA.emplace_back(data.second.rigid);
+			}
+			if (data.second.s72Rigidbody == joint.second.rigidbodyB) {
+				rigidbodyB.emplace_back(data.second.rigid);
+			}
+		}
+		for (auto a : rigidbodyA) {
+			for (auto b : rigidbodyB) {				
+				new Joint(
+					solver.get(),
+					a, b,
+					float3{ .x = joint.second.offsetA.x, .y = joint.second.offsetA.y, .z = joint.second.offsetA.z },
+					float3{ .x = joint.second.offsetB.x, .y = joint.second.offsetB.y, .z = joint.second.offsetB.z },					
+					joint.second.stiffnessLin, joint.second.stiffnessAng,
+					joint.second.fracture
+				);
+			}
+		}
+	}
+
+	
+}
+
 void Viewer::update_physics(float dt)
 {
-	for (auto& node : rtg.scene.nodes) {
-		if (node.second.rigidbody == nullptr) {
-			continue;
-		}
-
-		if (physics_data.find(node.first) == physics_data.end()) {
-			physics_data[node.first] = PhysicsData{
-			.position = { node.second.translation.x, node.second.translation.y, node.second.translation.z },
-			.velocity = { node.second.rigidbody->initial_velocity.x, node.second.rigidbody->initial_velocity.y, node.second.rigidbody->initial_velocity.z },
-			.rotation = { node.second.rotation.x, node.second.rotation.y, node.second.rotation.z, node.second.rotation.w },
-			};
-		}
-
-		auto& data = physics_data[node.first];
-		data.position = Physics::apply_velocity(data.position, data.velocity, dt);
-		data.velocity = Physics::apply_gravity(data.velocity, dt);
+	
+	//
+	if (!physics_data.empty() && !constraintInit) {
+		initializeJointConstraint();
+		constraintInit = true;
 	}
+	// avbd
+	solver->step();
+	
+	
+	
 }
 
 S72::color Viewer::srgb_to_linear(const S72::color& c)
@@ -3238,11 +3480,17 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 		}
 
 		if (root->rigidbody != nullptr) {
-			tx = physics_data[root->name].position.x;
-			ty = physics_data[root->name].position.y;
-			tz = physics_data[root->name].position.z;
+			if (physics_data.count(root->name)) {
+				tx = physics_data[root->name].rigid->positionLin[0];
+				ty = physics_data[root->name].rigid->positionLin[1];
+				tz = physics_data[root->name].rigid->positionLin[2];
 
-			
+				rx = physics_data[root->name].rigid->positionAng[0];
+				ry = physics_data[root->name].rigid->positionAng[1];
+				rz = physics_data[root->name].rigid->positionAng[2];
+				rw = physics_data[root->name].rigid->positionAng[3];
+				//std::cout << tx << ", " << ty << ", " << tz << std::endl;
+			}			
 		}
 
 
@@ -3267,25 +3515,75 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 
 		if (root->rigidbody != nullptr && root->rigidbody->collider != nullptr) {
 			S72::Collider* collider = root->rigidbody->collider;
+
+			float ctx = collider->offset.translation.x;
+			float cty = collider->offset.translation.y;
+			float ctz = collider->offset.translation.z;
+
+			float crx = collider->offset.rotation.x;
+			float cry = collider->offset.rotation.y;
+			float crz = collider->offset.rotation.z;
+			float crw = collider->offset.rotation.w;
+
+			const mat4 collider_parent_from_local = mat4{
+				(1 - 2 * (cry * cry + crz * crz)),	2 * (crx * cry + crw * crz),	2 * (crx * crz - crw * cry),	0.0f,
+				2 * (crx * cry - crw * crz),	(1 - 2 * (crx * crx + crz * crz)),	2 * (cry * crz + crw * crx),	0.0f,
+				2 * (crx * crz + crw * cry),	2 * (cry * crz - crw * crx),	(1 - 2 * (crx * crx + cry * cry)),	0.0f,
+				ctx,	cty,	ctz,	1.0f
+			};
+
+			
 			if (std::holds_alternative<S72::Collider::Box>(collider->shape)) {
-				S72::Collider::Box box = std::get<S72::Collider::Box>(collider->shape);
-				float ctx = collider->offset.translation.x;
-				float cty = collider->offset.translation.y;
-				float ctz = collider->offset.translation.z;
+				auto& box = std::get<S72::Collider::Box>(collider->shape);
+				float3 size = float3{ box.extents.x, box.extents.y, box.extents.z };
+				
+				mat4 COLLIDER_WORLD_FROM_LOCAL = WORLD_FROM_LOCAL * collider_parent_from_local;
+				render_box(COLLIDER_WORLD_FROM_LOCAL, box.extents.x, box.extents.y, box.extents.z);
 
-				float crx = collider->offset.rotation.x;
-				float cry = collider->offset.rotation.y;
-				float crz = collider->offset.rotation.z;
-				float crw = collider->offset.rotation.w;
+				if (!physics_data.count(root->name)) {
+					vec4 positionLin = COLLIDER_WORLD_FROM_LOCAL * vec4{ 0, 0, 0, 1 };
+					quat positionAng = float3x3ToQuat(extractFloat3x3(COLLIDER_WORLD_FROM_LOCAL));
+					physics_data[root->name] = PhysicsData{
+						.rigid = new Rigid(
+							solver.get(),
+							size,
+							root->rigidbody->is_static ? 0.0f : root->rigidbody->mass,
+							root->rigidbody->friction,
+							float3{ positionLin[0], positionLin[1], positionLin[2] },
+							positionAng,
+							float3{ root->rigidbody->initial_velocity.x, root->rigidbody->initial_velocity.y, root->rigidbody->initial_velocity.z },
+							Rigid::Shape::Box,
+							root->rigidbody->is_static
+						),
+						.s72Rigidbody = root->rigidbody
+					};
+				}				
+			}
+			else if (std::holds_alternative<S72::Collider::Sphere>(collider->shape)) {
+				auto& sphere = std::get<S72::Collider::Sphere>(collider->shape);
+				float radius = sphere.radius;
+				mat4 COLLIDER_WORLD_FROM_LOCAL = WORLD_FROM_LOCAL * collider_parent_from_local;
+				render_sphere(COLLIDER_WORLD_FROM_LOCAL, radius);
 
-				const mat4 collider_parent_from_local = mat4{
-					(1 - 2 * (cry * cry + crz * crz)),	2 * (crx * cry + crw * crz),	2 * (crx * crz - crw * cry),	0.0f,
-					2 * (crx * cry - crw * crz),	(1 - 2 * (crx * crx + crz * crz)),	2 * (cry * crz + crw * crx),	0.0f,
-					2 * (crx * crz + crw * cry),	2 * (cry * crz - crw * crx),	(1 - 2 * (crx * crx + cry * cry)),	0.0f,
-					ctx,	cty,	ctz,	1.0f
-				};
+				if (!physics_data.count(root->name)) {
+					vec4 positionLin = COLLIDER_WORLD_FROM_LOCAL * vec4{ 0, 0, 0, 1 };
+					quat positionAng = float3x3ToQuat(extractFloat3x3(COLLIDER_WORLD_FROM_LOCAL));
 
-				render_box(WORLD_FROM_LOCAL * collider_parent_from_local, box.extents.x, box.extents.y, box.extents.z);
+					physics_data[root->name] = PhysicsData{
+						.rigid = new Rigid(
+							solver.get(),
+							float3{radius, 0, 0},
+							root->rigidbody->is_static ? 0.0f : root->rigidbody->mass,
+							0.5f,
+							float3{ positionLin[0], positionLin[1], positionLin[2] },
+							positionAng,
+							float3{ root->rigidbody->initial_velocity.x, root->rigidbody->initial_velocity.y, root->rigidbody->initial_velocity.z },
+							Rigid::Shape::Sphere,
+							root->rigidbody->is_static
+						),
+						.s72Rigidbody = root->rigidbody
+					};
+				}
 
 			}
 			
@@ -3705,10 +4003,67 @@ void Viewer::render_box(const mat4& world_from_local, float extent_x, float exte
 	for (int i = 0; i < 12; i++) {
 		int a = edges[i][0];
 		int b = edges[i][1];
-		lines_vertices.emplace_back(PosColVertex{ .Position = {corners[a][0], corners[a][1], corners[a][2]}, .Color = {1,1,1,1} });
-		lines_vertices.emplace_back(PosColVertex{ .Position = {corners[b][0], corners[b][1], corners[b][2]}, .Color = {1,1,1,1} });
+		lines_vertices.emplace_back(PosColVertex{ .Position = {corners[a][0], corners[a][1], corners[a][2]}, .Color = {1,0,0,1} });
+		lines_vertices.emplace_back(PosColVertex{ .Position = {corners[b][0], corners[b][1], corners[b][2]}, .Color = {1,0,0,1} });
 	}
 		
+}
+
+void Viewer::render_sphere(const mat4& world_from_local, float radius)
+{
+	const int numSegments = 20;
+	const float delta = 2 * float(M_PI) / numSegments;
+	vec4 origin = world_from_local * vec4{ 0, 0, 0, 1 };
+	
+
+	for (int i = 0; i < numSegments; i++) {
+		float theta = (float)i / numSegments * 2 * float(M_PI);
+		float cosTheta = cos(theta);
+		float sinTheta = sin(theta);
+		float nextTheta = theta + delta;
+		float cosNextTheta = cos(nextTheta);
+		float sinNextTheta = sin(nextTheta);
+		float cosThetaRadius = radius * cosTheta;
+		float sinThetaRadius = radius * sinTheta;
+		float cosNextThetaRadius = radius * cosNextTheta;
+		float sinNextThetaRadius = radius * sinNextTheta;
+
+		// x, y circle
+		vec4 xyPoint = origin + vec4{ cosThetaRadius, sinThetaRadius, 0, 0 };
+		vec4 xyNextPoint = origin + vec4{ cosNextThetaRadius, sinNextThetaRadius, 0, 0 };
+		lines_vertices.emplace_back(PosColVertex{
+			.Position = {xyPoint[0], xyPoint[1], xyPoint[2]},
+			.Color = {1, 0, 0, 1}
+			});
+		lines_vertices.emplace_back(PosColVertex{
+			.Position = {xyNextPoint[0], xyNextPoint[1], xyNextPoint[2]},
+			.Color = {1, 0, 0, 1}
+			});
+
+		// x, z circle
+		vec4 xzPoint = origin + vec4{ cosThetaRadius, 0, sinThetaRadius, 0 };
+		vec4 xzNextPoint = origin + vec4{ cosNextThetaRadius, 0, sinNextThetaRadius, 0 };
+		lines_vertices.emplace_back(PosColVertex{
+			.Position = {xzPoint[0], xzPoint[1], xzPoint[2]},
+			.Color = {1, 0, 0, 1}
+			});
+		lines_vertices.emplace_back(PosColVertex{
+			.Position = {xzNextPoint[0], xzNextPoint[1], xzNextPoint[2]},
+			.Color = {1, 0, 0, 1}
+			});
+
+		// y, z circle
+		vec4 yzPoint = origin + vec4{ 0, cosThetaRadius, sinThetaRadius, 0 };
+		vec4 yzNextPoint = origin + vec4{ 0, cosNextThetaRadius, sinNextThetaRadius, 0 };
+		lines_vertices.emplace_back(PosColVertex{
+			.Position = {yzPoint[0], yzPoint[1], yzPoint[2]},
+			.Color = {1, 0, 0, 1}
+			});
+		lines_vertices.emplace_back(PosColVertex{
+			.Position = {yzNextPoint[0], yzNextPoint[1], yzNextPoint[2]},
+			.Color = {1, 0, 0, 1}
+			});
+	}
 }
 
 

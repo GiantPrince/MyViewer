@@ -7,6 +7,7 @@
 #include "PosNorTexVertex.hpp"
 #include "Physics.hpp"
 #include "mat4.hpp"
+#include "solver.hpp"
 
 #include <GLFW/glfw3.h>
 
@@ -194,6 +195,151 @@ struct Viewer : RTG::Application {
 		void destroy(RTG&);
 	} shadow_maps_pipeline;
 
+	struct AVBDPipeline {
+		VkDescriptorSetLayout set0_Rigids = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set1_UpdatedRigids = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set2_Manifolds = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set3_Colors = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set4_Counter = VK_NULL_HANDLE;
+
+		struct Push {
+			uint32_t rigidbody_count;
+			int32_t init;
+		};
+
+		struct UpdatedRigid {
+			vec4 positionLin; 
+			vec4 positionAng; 
+		};
+
+		struct Rigid
+		{
+			float3 positionLin;
+			float mass;
+
+			quat positionAng;
+
+			float3 initialLin;
+			float friction;
+
+			quat initialAng;
+
+			float3 inertialLin;
+			float radius;
+
+			quat inertialAng;
+
+			float3 velocityLin; 
+			uint32_t isStatic;
+
+			float3 velocityAng;
+			enum class Shape
+			{
+				Box,
+				Sphere
+			} shape;
+
+			float3 prevVelocityLin; 
+			uint32_t listHead;
+
+			float3 size; 
+			float pad1_;
+
+			float3 moment;
+			float pad2_;
+			
+		};
+
+		struct Force {
+			uint32_t bodyA;
+			uint32_t bodyB;
+			int32_t next;
+			uint32_t _pad0;
+		};
+
+		struct Contact {
+			float3 rA;
+			uint32_t feature;			
+			float3 rB;
+			uint32_t stick;
+
+			float3 C0;
+			float _pad3;
+
+			float3 penalty;
+			float _pad4;
+
+			float3 lambda;
+			float _pad5;
+		};
+
+		struct Manifold {
+			Force force;          
+			Contact contacts[8];
+			
+			struct {
+				float3 row; float p0;
+				float3 row1; float p1;
+				float3 row2; float p2;
+			} basis;   
+
+			int numContacts;
+			float friction;			
+		};
+		
+		struct Color {
+			uint32_t color;
+		};
+
+		struct Counter {
+			int32_t counter;
+		};
+
+		VkPipeline handle = VK_NULL_HANDLE;
+		VkPipeline broad_collision_handle = VK_NULL_HANDLE;
+		VkPipeline precise_collision_handle = VK_NULL_HANDLE;
+		VkPipeline graph_color_handle = VK_NULL_HANDLE;
+		VkPipeline main_loop_init_handle = VK_NULL_HANDLE;
+		VkPipeline main_loop_handle = VK_NULL_HANDLE;
+		VkPipeline main_loop_copy_back_handle = VK_NULL_HANDLE;
+		VkPipeline main_loop_dual_handle = VK_NULL_HANDLE;
+		VkPipeline velocity_update_handle = VK_NULL_HANDLE;
+
+
+		VkPipelineLayout layout = VK_NULL_HANDLE;
+
+		
+
+		void create(RTG&, VkRenderPass, uint32_t subpass);
+		void destroy(RTG&);
+	} avbd_pipeline;
+
+	// command buffer for avbd pipeline
+	struct AVBD {
+		bool init = false;
+		VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+
+		Helpers::AllocatedBuffer Rigidbodies_cpu;
+		Helpers::AllocatedBuffer Rigidbodies;
+		VkDescriptorSet Rigidbodies_descriptors = VK_NULL_HANDLE;
+
+		Helpers::AllocatedBuffer UpdatedRigidbodies;
+		VkDescriptorSet UpdatedRigidbodies_descriptors = VK_NULL_HANDLE;
+
+		Helpers::AllocatedBuffer Manifolds;
+		VkDescriptorSet Manifolds_descriptors = VK_NULL_HANDLE;
+
+		Helpers::AllocatedBuffer Colors;
+		VkDescriptorSet Colors_descriptors = VK_NULL_HANDLE;
+
+		Helpers::AllocatedBuffer Counter;
+		VkDescriptorSet Counter_descriptors = VK_NULL_HANDLE;
+
+	} avbd;
+
+
+
+
 	//pools from which per-workspace things are allocated:
 	VkCommandPool command_pool = VK_NULL_HANDLE;
 	VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
@@ -373,6 +519,7 @@ struct Viewer : RTG::Application {
 	void load_objects(const S72::Node* root, const mat4& world_from_local, const mat4& world_from_local_normal);
 	void render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, const mat4& world_from_local_normal);
 	void render_box(const mat4& world_from_local, float extent_x, float extent_y, float extent_z);
+	void render_sphere(const mat4& world_from_local, float radius);
 	// loading all textures
 	void load_textures();
 
@@ -400,6 +547,8 @@ struct Viewer : RTG::Application {
 	std::pair<uint32_t, uint32_t> find_time_interval(const std::vector<float>& times, float t);
 	vec4 interpolate(const vec4& start, const vec4& end, float t, S72::Driver::Interpolation interpolation);
 
+	bool constraintInit = false;
+	void initializeJointConstraint();
 	void update_physics(float dt);
 
 	float playback_rate = 1.0f;
@@ -420,9 +569,8 @@ struct Viewer : RTG::Application {
 	std::unordered_map <std::string, DriverValue> driver_channel_values;
 
 	struct PhysicsData {		
-		Physics::vec3 position;
-		Physics::vec3 velocity;
-		S72::quat rotation;
+		Rigid* rigid;
+		S72::RigidBody* s72Rigidbody;
 	};
 
 	std::unordered_map<std::string, PhysicsData> physics_data;
@@ -475,6 +623,9 @@ struct Viewer : RTG::Application {
 
 	// shadow map renderpass
 	VkRenderPass shadow_map_render_pass = VK_NULL_HANDLE;
+
+	// the solver
+	std::unique_ptr<Solver> solver;
 
 	// update shadow maps
 	void update_shadow_maps();	
