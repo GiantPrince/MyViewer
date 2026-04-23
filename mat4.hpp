@@ -1,5 +1,6 @@
 #pragma once
 
+
 //A *small* matrix math library for 4x4 matrices only.
 
 #include <array>
@@ -274,3 +275,4 @@ inline mat4 inverse_mat(const mat4& M) {
 
 	return inv;
 }
+

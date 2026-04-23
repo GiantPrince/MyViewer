@@ -33,7 +33,12 @@ const main_objs = [
 	maek.CPP('PosNorTexVertex.cpp'),
 	maek.CPP('Vertex.cpp'),		
 	maek.CPP('main.cpp'),	
-	maek.CPP('Physics.cpp'),
+	//maek.CPP('Physics.cpp'),
+	maek.CPP('Manifold.cpp'),
+	maek.CPP('joint.cpp'),
+	maek.CPP('solver.cpp'),
+	maek.CPP('Force.cpp'),
+	maek.CPP('Rigidbody.cpp'),
 	...rtg
 ];
 
@@ -68,7 +73,20 @@ main_objs.push( maek.CPP('Tutorial-ObjectsPipeline.cpp', undefined, { depends:[.
 const shadow_map_shaders = [
 	maek.GLSLC('shadow.vert')
 ];	
-main_objs.push( maek.CPP('Viewer-ShadowMapPipeline.cpp', undefined, { depends:[...shadow_map_shaders] } ) )
+main_objs.push( maek.CPP('Viewer-ShadowMapPipeline.cpp', undefined, { depends:[...shadow_map_shaders] } ) );
+
+const avbd_shaders = [
+	maek.GLSLC('avbd.comp'),
+	maek.GLSLC('broad-collision.comp'),
+	maek.GLSLC('precise-collision.comp'),
+	maek.GLSLC('graph-color.comp'),
+	maek.GLSLC('main-loop-init.comp'),
+	maek.GLSLC('main-loop.comp'),
+	maek.GLSLC('main-loop-copy-back.comp'),
+	maek.GLSLC('main-loop-dual.comp'),
+	maek.GLSLC('velocity-update.comp')
+];
+main_objs.push( maek.CPP('Viewer-AVBDPipeline.cpp', undefined, { depends:[...avbd_shaders] } ) );
 
 const cube_objs = [
     maek.CPP('main-cube.cpp')    

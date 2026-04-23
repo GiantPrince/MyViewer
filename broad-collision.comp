@@ -1,0 +1,55 @@
+#version 450
+#extension GL_EXT_debug_printf : enable
+
+#include "AVBD-header.glsl"
+
+layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
+
+
+void main() {
+    // first broadphase detecting the collision	
+    uint id = gl_GlobalInvocationID.x;
+	if (id >= rigidbodyCount) {
+		return;
+	}
+
+	// set with vkcmd
+	//if (id == 0) {		
+	//	globalManifoldCount = 0;
+	//}
+	
+
+	int last = -1;
+	int listHead = -1;
+	
+	
+	
+	int forceCount = 0;
+    for (uint i = 0; i < rigidbodyCount; i++) {
+		if (i == id) continue;
+		
+        if (rigids[id].radius + rigids[i].radius > distance(rigids[id].positionLin, rigids[i].positionLin)) {
+			
+            int index = atomicAdd(globalManifoldCount, 1);			
+			if (index >= rigidbodyCount * rigidbodyCount / 2) {
+				continue;
+			}
+            manifolds[index].force.bodyA = id;
+            manifolds[index].force.bodyB = i;
+			manifolds[index].force.next = -1;
+			if (last == -1) {
+				listHead = index;
+				last = index;
+			}
+			else {
+				manifolds[last].force.next = index;
+				last = index;
+			}
+        }
+    }
+
+	rigids[id].listHead = listHead;
+	
+		
+}
+

@@ -1761,7 +1761,534 @@ void Viewer::update_physics(float dt)
 	// avbd
 	solver->step();
 	
-	
+
+
+	//VK(vkResetCommandBuffer(avbd.command_buffer, 0));
+	//{
+	//	if (solver->num_bodies != 0) {
+	//		VkCommandBufferBeginInfo begin{
+	//		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+	//		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+	//		};
+
+	//		vkBeginCommandBuffer(avbd.command_buffer, &begin);
+	//		size_t needed_bytes = sizeof(AVBDPipeline::Rigid) * solver->num_bodies;
+	//		if (avbd.Rigidbodies_cpu.handle == VK_NULL_HANDLE || avbd.Rigidbodies_cpu.size < needed_bytes) {
+	//			size_t new_bytes = (needed_bytes + 4096) / 4096 * 4096;
+
+	//			if (avbd.Rigidbodies_cpu.handle != VK_NULL_HANDLE) {
+	//				rtg.helpers.destroy_buffer(std::move(avbd.Rigidbodies_cpu));
+	//			}
+	//			if (avbd.Rigidbodies.handle != VK_NULL_HANDLE) {
+	//				rtg.helpers.destroy_buffer(std::move(avbd.Rigidbodies));
+	//			}
+	//			avbd.Rigidbodies_cpu = rtg.helpers.create_buffer(
+	//				new_bytes,
+	//				VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+	//				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+	//				Helpers::Mapped
+	//			);
+
+	//			avbd.Rigidbodies = rtg.helpers.create_buffer(
+	//				new_bytes,
+	//				VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+	//				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+	//				Helpers::Unmapped
+	//			);
+
+	//			// Update Descriptor Set
+	//			VkDescriptorBufferInfo Rigids_info{
+	//				.buffer = avbd.Rigidbodies.handle,
+	//				.offset = 0,
+	//				.range = avbd.Rigidbodies.size
+	//			};
+
+	//			std::array<VkWriteDescriptorSet, 1> writes{
+	//				VkWriteDescriptorSet{
+	//					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+	//					.dstSet = avbd.Rigidbodies_descriptors,
+	//					.dstBinding = 0,
+	//					.dstArrayElement = 0,
+	//					.descriptorCount = 1,
+	//					.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+	//					.pBufferInfo = &Rigids_info
+	//				}
+	//			};
+
+	//			vkUpdateDescriptorSets(
+	//				rtg.device,
+	//				uint32_t(writes.size()),
+	//				writes.data(),
+	//				0, nullptr
+	//			);
+	//			std::cout << "Re-allocated Rigids buffers to " << new_bytes << std::endl;
+
+
+	//			// reallocate update rigids buffer
+	//		}
+
+	//		size_t updated_rigids_needed_bytes = solver->num_bodies * sizeof(AVBDPipeline::UpdatedRigid);
+	//		if (avbd.UpdatedRigidbodies.handle == VK_NULL_HANDLE || avbd.UpdatedRigidbodies.size < updated_rigids_needed_bytes) {
+	//			size_t new_bytes = (updated_rigids_needed_bytes + 4096) / 4096 * 4096;
+
+	//			if (avbd.UpdatedRigidbodies.handle != VK_NULL_HANDLE) {
+	//				rtg.helpers.destroy_buffer(std::move(avbd.UpdatedRigidbodies));
+	//			}
+
+
+	//			avbd.UpdatedRigidbodies = rtg.helpers.create_buffer(
+	//				new_bytes,
+	//				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+	//				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+	//				Helpers::Unmapped
+	//			);
+
+	//			// Update Descriptor Set
+	//			VkDescriptorBufferInfo Rigids_info{
+	//				.buffer = avbd.UpdatedRigidbodies.handle,
+	//				.offset = 0,
+	//				.range = avbd.UpdatedRigidbodies.size
+	//			};
+
+	//			std::array<VkWriteDescriptorSet, 1> writes{
+	//				VkWriteDescriptorSet{
+	//					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+	//					.dstSet = avbd.UpdatedRigidbodies_descriptors,
+	//					.dstBinding = 0,
+	//					.dstArrayElement = 0,
+	//					.descriptorCount = 1,
+	//					.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+	//					.pBufferInfo = &Rigids_info
+	//				}
+	//			};
+
+	//			vkUpdateDescriptorSets(
+	//				rtg.device,
+	//				uint32_t(writes.size()),
+	//				writes.data(),
+	//				0, nullptr
+	//			);
+	//			std::cout << "Re-allocated Updated Rigids buffers to " << new_bytes << std::endl;
+	//		}
+
+	//		size_t manifolds_needed_bytes = solver->num_bodies * solver->num_bodies / 4 * sizeof(AVBDPipeline::Manifold);
+	//		if (avbd.Manifolds.handle == VK_NULL_HANDLE || avbd.Manifolds.size < manifolds_needed_bytes) {
+	//			size_t new_bytes = (manifolds_needed_bytes + 4096) / 4096 * 4096;
+
+	//			if (avbd.Manifolds.handle != VK_NULL_HANDLE) {
+	//				rtg.helpers.destroy_buffer(std::move(avbd.Manifolds));
+	//			}
+
+
+	//			avbd.Manifolds = rtg.helpers.create_buffer(
+	//				new_bytes,
+	//				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+	//				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+	//				Helpers::Unmapped
+	//			);
+
+	//			// Update Descriptor Set
+	//			VkDescriptorBufferInfo Rigids_info{
+	//				.buffer = avbd.Manifolds.handle,
+	//				.offset = 0,
+	//				.range = avbd.Manifolds.size
+	//			};
+
+	//			std::array<VkWriteDescriptorSet, 1> writes{
+	//				VkWriteDescriptorSet{
+	//					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+	//					.dstSet = avbd.Manifolds_descriptors,
+	//					.dstBinding = 0,
+	//					.dstArrayElement = 0,
+	//					.descriptorCount = 1,
+	//					.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+	//					.pBufferInfo = &Rigids_info
+	//				}
+	//			};
+
+	//			vkUpdateDescriptorSets(
+	//				rtg.device,
+	//				uint32_t(writes.size()),
+	//				writes.data(),
+	//				0, nullptr
+	//			);
+	//			std::cout << "Re-allocated Manifolds buffers to " << new_bytes << std::endl;
+	//		}
+
+	//		size_t colors_needed_bytes = solver->num_bodies * sizeof(AVBDPipeline::Color);
+	//		if (avbd.Colors.handle == VK_NULL_HANDLE || avbd.Colors.size < colors_needed_bytes) {
+	//			size_t new_bytes = (colors_needed_bytes + 4096) / 4096 * 4096;
+
+	//			if (avbd.Colors.handle != VK_NULL_HANDLE) {
+	//				rtg.helpers.destroy_buffer(std::move(avbd.Colors));
+	//			}
+
+
+	//			avbd.Colors = rtg.helpers.create_buffer(
+	//				new_bytes,
+	//				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+	//				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+	//				Helpers::Unmapped
+	//			);
+
+	//			// Update Descriptor Set
+	//			VkDescriptorBufferInfo Rigids_info{
+	//				.buffer = avbd.Colors.handle,
+	//				.offset = 0,
+	//				.range = avbd.Colors.size
+	//			};
+
+	//			std::array<VkWriteDescriptorSet, 1> writes{
+	//				VkWriteDescriptorSet{
+	//					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+	//					.dstSet = avbd.Colors_descriptors,
+	//					.dstBinding = 0,
+	//					.dstArrayElement = 0,
+	//					.descriptorCount = 1,
+	//					.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+	//					.pBufferInfo = &Rigids_info
+	//				}
+	//			};
+
+	//			vkUpdateDescriptorSets(
+	//				rtg.device,
+	//				uint32_t(writes.size()),
+	//				writes.data(),
+	//				0, nullptr
+	//			);
+	//			std::cout << "Re-allocated Colors buffers to " << new_bytes << std::endl;
+	//		}
+
+
+
+
+	//		{
+	//			assert(avbd.Rigidbodies_cpu.allocation.mapped);
+	//			AVBDPipeline::Rigid* out = reinterpret_cast<AVBDPipeline::Rigid*>(avbd.Rigidbodies_cpu.allocation.data());
+	//			for (Rigid* body = solver->bodies; body != 0; body = body->next) {
+	//				out->friction = body->friction;
+	//				out->positionLin = body->positionLin;
+	//				out->positionAng = body->positionAng;
+	//				out->velocityLin = body->velocityLin;
+	//				out->velocityAng = body->velocityAng;
+	//				out->prevVelocityLin = body->prevVelocityLin;
+	//				out->mass = body->mass;
+	//				out->isStatic = body->isStatic;
+	//				out->moment = body->moment;
+	//				out->shape = AVBDPipeline::Rigid::Shape(body->shape);
+	//				out->size = body->size;
+	//				out->radius = body->radius;
+	//				++out;
+	//			}
+	//		}
+	//		VkBufferCopy copy_region{
+	//			.srcOffset = 0,
+	//			.dstOffset = 0,
+	//			.size = needed_bytes
+	//		};
+
+	//		vkCmdCopyBuffer(avbd.command_buffer, avbd.Rigidbodies_cpu.handle, avbd.Rigidbodies.handle, 1, &copy_region);
+
+	//		{
+	//			vkCmdFillBuffer(
+	//				avbd.command_buffer,
+	//				avbd.Counter.handle,
+	//				0,
+	//				sizeof(int),
+	//				0
+	//			);
+
+	//			vkCmdFillBuffer(
+	//				avbd.command_buffer,
+	//				avbd.Colors.handle,
+	//				0,
+	//				sizeof(int) * solver->num_bodies,
+	//				0
+	//			);
+	//		}
+
+	//		{
+	//			VkMemoryBarrier transfer_to_compute_barrier{
+	//				.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+	//				.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+	//				.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+	//			};
+	//			vkCmdPipelineBarrier(
+	//				avbd.command_buffer,
+	//				VK_PIPELINE_STAGE_TRANSFER_BIT,
+	//				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	//				0,
+	//				1, &transfer_to_compute_barrier,
+	//				0, nullptr,
+	//				0, nullptr
+	//			);
+	//		}
+
+	//		{
+	//			AVBDPipeline::Push push{
+	//				.rigidbody_count = static_cast<uint32_t>(solver->num_bodies),
+	//				.init = rand()
+	//			};
+	//			//avbd.init = true;
+	//			vkCmdPushConstants(avbd.command_buffer, avbd_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(AVBDPipeline::Push), &push);
+
+	//		}
+
+	//		{
+	//			// bindpipeline and then dispatch
+	//			std::array<VkDescriptorSet, 5> descriptors{
+	//				avbd.Rigidbodies_descriptors,
+	//				avbd.UpdatedRigidbodies_descriptors,
+	//				avbd.Manifolds_descriptors,
+	//				avbd.Colors_descriptors,
+	//				avbd.Counter_descriptors
+	//			};
+	//			vkCmdBindDescriptorSets(avbd.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, avbd_pipeline.layout, 0, static_cast<uint32_t>(descriptors.size()), descriptors.data(), 0, nullptr);
+	//		}
+
+	//		{
+	//			// step 1: broad collision detection
+	//			// bind pipeline
+	//			const int align = 1024;
+	//			vkCmdBindPipeline(avbd.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, avbd_pipeline.broad_collision_handle);
+	//			vkCmdDispatch(avbd.command_buffer, (solver->num_bodies + align - 1) / align, 1, 1);
+	//		}
+
+	//		{
+	//			VkMemoryBarrier barrier{};
+	//			barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	//			barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	//			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+	//			vkCmdPipelineBarrier(
+	//				avbd.command_buffer,
+	//				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // src stage
+	//				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // dst stage
+	//				0,
+	//				1, &barrier,
+	//				0, nullptr,
+	//				0, nullptr
+	//			);
+	//		}
+
+	//		{
+	//			// step 2: precise collision detection
+	//			const int align = 1024;
+	//			vkCmdBindPipeline(avbd.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, avbd_pipeline.precise_collision_handle);
+	//			vkCmdDispatch(avbd.command_buffer, (solver->num_bodies + align - 1) / align, 1, 1);
+	//		}
+
+	//		{
+	//			VkMemoryBarrier barrier{};
+	//			barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	//			barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	//			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+	//			vkCmdPipelineBarrier(
+	//				avbd.command_buffer,
+	//				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // src stage
+	//				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // dst stage
+	//				0,
+	//				1, &barrier,
+	//				0, nullptr,
+	//				0, nullptr
+	//			);
+	//		}
+
+	//		{
+	//			// step 3: coloring
+	//			const int align = 1024;
+	//			vkCmdBindPipeline(avbd.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, avbd_pipeline.graph_color_handle);
+	//			vkCmdDispatch(avbd.command_buffer, (solver->num_bodies + align - 1) / align, 1, 1);
+
+
+	//			//step 4: main-loop-init
+	//			vkCmdBindPipeline(avbd.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, avbd_pipeline.main_loop_init_handle);
+	//			vkCmdDispatch(avbd.command_buffer, (solver->num_bodies + align - 1) / align, 1, 1);
+	//		}
+
+	//		{
+	//			// barrier
+	//			VkMemoryBarrier barrier{};
+	//			barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	//			barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	//			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+	//			vkCmdPipelineBarrier(
+	//				avbd.command_buffer,
+	//				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // src stage
+	//				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // dst stage
+	//				0,
+	//				1, &barrier,
+	//				0, nullptr,
+	//				0, nullptr
+	//			);
+	//		}
+
+	//		{
+	//			// step 4: main-loop
+	//			VkMemoryBarrier barrier{};
+	//			barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	//			barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	//			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+	//			const int align = 1024;
+
+	//			for (int i = 0; i < solver->iterations; i++) {
+	//				for (int c = 0; c < 5; c++) {
+	//					AVBDPipeline::Push push{
+	//						.rigidbody_count = static_cast<uint32_t>(solver->num_bodies),
+	//						.init = c
+	//					};
+	//					vkCmdBindPipeline(avbd.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, avbd_pipeline.main_loop_handle);
+	//					vkCmdPushConstants(avbd.command_buffer, avbd_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(AVBDPipeline::Push), &push);
+	//					vkCmdDispatch(avbd.command_buffer, (solver->num_bodies + align - 1) / align, 1, 1);
+	//					vkCmdPipelineBarrier(
+	//						avbd.command_buffer,
+	//						VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // src stage
+	//						VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // dst stage
+	//						0,
+	//						1, &barrier,
+	//						0, nullptr,
+	//						0, nullptr
+	//					);
+
+	//					vkCmdBindPipeline(avbd.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, avbd_pipeline.main_loop_copy_back_handle);
+	//					vkCmdDispatch(avbd.command_buffer, (solver->num_bodies + align - 1) / align, 1, 1);
+	//					vkCmdPipelineBarrier(
+	//						avbd.command_buffer,
+	//						VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // src stage
+	//						VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // dst stage
+	//						0,
+	//						1, &barrier,
+	//						0, nullptr,
+	//						0, nullptr
+	//					);
+
+
+	//				}
+
+
+	//				{
+	//					// update dual
+	//					//vkCmdPipelineBarrier(
+	//					//	avbd.command_buffer,
+	//					//	VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // src stage
+	//					//	VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // dst stage
+	//					//	0,
+	//					//	1, &barrier,
+	//					//	0, nullptr,
+	//					//	0, nullptr
+	//					//);
+	//					vkCmdBindPipeline(avbd.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, avbd_pipeline.main_loop_dual_handle);
+	//					vkCmdDispatch(avbd.command_buffer, ((solver->num_bodies * solver->num_bodies / 2) + align - 1) / align, 1, 1);
+	//				}
+	//			}
+
+	//			vkCmdPipelineBarrier(
+	//				avbd.command_buffer,
+	//				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // src stage
+	//				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // dst stage
+	//				0,
+	//				1, &barrier,
+	//				0, nullptr,
+	//				0, nullptr
+	//			);
+
+	//		}
+
+
+	//		{
+	//			const int align = 1024;
+	//			vkCmdBindPipeline(avbd.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, avbd_pipeline.velocity_update_handle);
+	//			vkCmdDispatch(avbd.command_buffer, ((solver->num_bodies) + align - 1) / align, 1, 1);
+	//		}
+
+	//		{
+	//			VkBufferMemoryBarrier barrier{};
+	//			barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+	//			barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	//			barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	//			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	//			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	//			barrier.buffer = avbd.Rigidbodies.handle;
+	//			barrier.offset = 0;
+	//			barrier.size = VK_WHOLE_SIZE;
+
+	//			vkCmdPipelineBarrier(
+	//				avbd.command_buffer,
+	//				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // 写来自 compute
+	//				VK_PIPELINE_STAGE_TRANSFER_BIT,       // 读在 transfer
+	//				0,
+	//				0, nullptr,
+	//				1, &barrier,
+	//				0, nullptr
+	//			);
+	//		}
+
+	//		{
+	//			// copy back
+	//			size_t copy_back_needed_bytes = sizeof(AVBDPipeline::Rigid) * solver->num_bodies;
+
+	//			VkBufferCopy copy_back_region{
+	//				.srcOffset = 0,
+	//				.dstOffset = 0,
+	//				.size = copy_back_needed_bytes
+	//			};
+
+	//			vkCmdCopyBuffer(avbd.command_buffer, avbd.Rigidbodies.handle, avbd.Rigidbodies_cpu.handle, 1, &copy_back_region);
+	//		}
+
+	//		{
+	//			// barrier
+	//			VkMemoryBarrier barrier = {};
+	//			barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	//			barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	//			barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+
+
+	//			vkCmdPipelineBarrier(
+	//				avbd.command_buffer,
+	//				VK_PIPELINE_STAGE_TRANSFER_BIT,
+	//				VK_PIPELINE_STAGE_HOST_BIT,
+	//				0,
+	//				1, &barrier,
+	//				0, nullptr,
+	//				0, nullptr
+	//			);
+	//		}
+
+	//		VK(vkEndCommandBuffer(avbd.command_buffer));
+
+	//		{
+	//			VkSubmitInfo submit_info{
+	//				.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+	//				.commandBufferCount = 1,
+	//				.pCommandBuffers = &avbd.command_buffer,
+	//			};
+	//			VK(vkQueueSubmit(rtg.graphics_queue, 1, &submit_info, VK_NULL_HANDLE));
+	//			VK(vkQueueWaitIdle(rtg.graphics_queue));
+	//		}
+	//		
+	//		{
+	//			//int a = 0;
+	//			AVBDPipeline::Rigid* out = reinterpret_cast<AVBDPipeline::Rigid*>(avbd.Rigidbodies_cpu.allocation.data());
+	//			for (Rigid* body = solver->bodies; body != 0; body = body->next) {
+	//				//a++;
+	//				if (length(body->positionLin - out->positionLin) > 0.001f) {
+	//					//a = ii;
+	//				}
+	//				body->positionLin = float3{ out->positionLin[0], out->positionLin[1], out->positionLin[2] };
+	//				body->positionAng = quat{ out->positionAng[0], out->positionAng[1], out->positionAng[2], out->positionAng[3] };
+	//				body->velocityLin = float3{ out->velocityLin[0], out->velocityLin[1], out->velocityLin[2] };
+	//				body->velocityAng = float3{ out->velocityAng[0], out->velocityAng[1], out->velocityAng[2] };
+	//				body->prevVelocityLin = float3{ out->prevVelocityLin[0], out->prevVelocityLin[1], out->prevVelocityLin[2] };
+	//				++out;
+	//			}
+	//		}
+	//	}
+
+	//}
 	
 }
 

@@ -1,0 +1,230 @@
+#version 450
+#extension GL_EXT_debug_printf : enable
+
+#include "AVBD-header.glsl"
+
+layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
+
+vec3 rotate(vec4 angle, vec3 v) {
+	vec3 u = vec3( angle.x, angle.y, angle.z );
+	vec3 t = cross(u, v) * 2.0f;
+	return v + t * angle.w + cross(u, t);
+}
+
+OBB makeOBB(uint body) {
+	OBB box;
+	box.center = rigids[body].positionLin;
+	box.rotation = rigids[body].positionAng;
+	box.halfExtent = rigids[body].size * 0.5f;
+	box.axis[0] = rotate(rigids[body].positionAng, vec3( 1.0f, 0.0f, 0.0f ));
+	box.axis[1] = rotate(rigids[body].positionAng, vec3( 0.0f, 1.0f, 0.0f ));
+	box.axis[2] = rotate(rigids[body].positionAng, vec3( 0.0f, 0.0f, 1.0f ));
+	return box;
+}
+
+vec4 conjugate(vec4 q) {
+	return vec4( -q.x, -q.y, -q.z, q.w );
+}
+
+
+vec3 transform(vec3 qLin, vec4 qAng, vec3 v) {
+	return rotate(qAng, v) + qLin;
+}
+
+
+vec4 inverse(vec4 q) {
+	return conjugate(q) / dot(q, q);
+}
+vec4 quatTime(vec4 a, vec4 b) {
+	return vec4(
+		a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+		a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+		a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+		a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z );
+}
+
+
+vec4 addAng(vec4 a, vec3 b) {
+	return normalize(a + quatTime(vec4( b.x, b.y, b.z, 0), a) * 0.5f);
+}
+
+vec3 subAng(vec4 a, vec4 b) {
+	return quatTime(a, inverse(b)).xyz * 2.0f;
+}
+
+
+
+void updatePrimal(uint manifoldIndex, uint body, float alpha, inout mat3 lhsLin, inout mat3 lhsAng, inout mat3 lhsCross, inout vec3 rhsLin, inout vec3 rhsAng)
+{
+	vec3 dqALin = rigids[manifolds[manifoldIndex].force.bodyA].positionLin - rigids[manifolds[manifoldIndex].force.bodyA].initialLin;
+	vec3 dqAAng = subAng(rigids[manifolds[manifoldIndex].force.bodyA].positionAng, rigids[manifolds[manifoldIndex].force.bodyA].initialAng);
+	vec3 dqBLin = rigids[manifolds[manifoldIndex].force.bodyB].positionLin - rigids[manifolds[manifoldIndex].force.bodyB].initialLin;
+	vec3 dqBAng = subAng(rigids[manifolds[manifoldIndex].force.bodyB].positionAng, rigids[manifolds[manifoldIndex].force.bodyB].initialAng);
+	
+	for (int i = 0; i < manifolds[manifoldIndex].numContacts; i++)
+	{
+		vec3 rAWorld = rotate(rigids[manifolds[manifoldIndex].force.bodyA].positionAng, manifolds[manifoldIndex].contacts[i].rA);
+		vec3 rBWorld = rotate(rigids[manifolds[manifoldIndex].force.bodyB].positionAng, manifolds[manifoldIndex].contacts[i].rB);
+
+		mat3 jALin = manifolds[manifoldIndex].basis;
+		mat3 jBLin = -manifolds[manifoldIndex].basis;
+		
+		mat3 jAAng = transpose(mat3(cross(rAWorld, jALin[0]), cross(rAWorld, jALin[1]), cross(rAWorld, jALin[2])));
+		mat3 jBAng = transpose(mat3(cross(rBWorld, jBLin[0]), cross(rBWorld, jBLin[1]), cross(rBWorld, jBLin[2])));
+		jALin = transpose(jALin);
+		jBLin = transpose(jBLin);
+
+		mat3 K = mat3(
+			vec3(manifolds[manifoldIndex].contacts[i].penalty.x, 0.0, 0.0),
+			vec3(0.0, manifolds[manifoldIndex].contacts[i].penalty.y, 0.0),
+			vec3(0.0, 0.0, manifolds[manifoldIndex].contacts[i].penalty.z)
+		);
+		vec3 C = manifolds[manifoldIndex].contacts[i].C0 * (1 - alpha) + jALin * dqALin + jBLin * dqBLin + jAAng * dqAAng + jBAng * dqBAng;
+		//debugPrintfEXT(
+		//	"Contact C = (%f, %f, %f), C0 = (%f, %f, %f)\n",
+		//	C.x, C.y, C.z,
+		//	manifolds[manifoldIndex].contacts[i].C0.x, 
+		//	manifolds[manifoldIndex].contacts[i].C0.y,
+		//	manifolds[manifoldIndex].contacts[i].C0.z
+		//);
+		vec3 F = K * C + manifolds[manifoldIndex].contacts[i].lambda;
+
+		F.x = min(F.x, 0.0f);
+
+		float bounds = abs(F.x) * manifolds[manifoldIndex].friction;
+		float frictionScale = length(vec2(F.y, F.z));
+		if (frictionScale > bounds && frictionScale > 0)
+		{
+			F.y *= bounds / frictionScale;
+			F.z *= bounds / frictionScale;
+		}
+		
+
+
+		mat3 jLin = body == manifolds[manifoldIndex].force.bodyA ? jALin : jBLin;
+		mat3 jAng = body == manifolds[manifoldIndex].force.bodyA ? jAAng : jBAng;
+
+		mat3 jLinT = transpose(jLin);
+		mat3 jAngT = transpose(jAng);
+		mat3 jAngTk = jAngT * K;
+
+		lhsLin += jLinT * K * jLin;
+		lhsAng += jAngTk * jAng;
+		lhsCross += jAngTk * jLin;
+		
+		rhsLin += jLinT * F;
+		rhsAng += jAngT * F;
+	}
+}
+
+uint hash_weight(uint x) {
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = (x >> 16) ^ x;
+    return x;
+}
+
+void solve(mat3 aLin, mat3 aAng, mat3 aCross, vec3 bLin, vec3 bAng, out vec3 xLin, out vec3 xAng) {
+    
+    float A11 = aLin[0][0];
+    float A21 = aLin[0][1], A22 = aLin[1][1];
+    float A31 = aLin[0][2], A32 = aLin[1][2], A33 = aLin[2][2];
+        
+    float A41 = aCross[0][0], A42 = aCross[1][0], A43 = aCross[2][0], A44 = aAng[0][0];
+    float A51 = aCross[0][1], A52 = aCross[1][1], A53 = aCross[2][1], A54 = aAng[0][1], A55 = aAng[1][1];
+    float A61 = aCross[0][2], A62 = aCross[1][2], A63 = aCross[2][2], A64 = aAng[0][2], A65 = aAng[1][2], A66 = aAng[2][2];
+    
+
+    float D1 = A11;
+    float L21 = A21 / D1;
+    float L31 = A31 / D1;
+    float L41 = A41 / D1;
+    float L51 = A51 / D1;
+    float L61 = A61 / D1;
+
+    float D2 = A22 - L21 * L21 * D1;
+    float L32 = (A32 - L21 * L31 * D1) / D2;
+    float L42 = (A42 - L21 * L41 * D1) / D2;
+    float L52 = (A52 - L21 * L51 * D1) / D2;
+    float L62 = (A62 - L21 * L61 * D1) / D2;
+
+    float D3 = A33 - (L31 * L31 * D1 + L32 * L32 * D2);
+    float L43 = (A43 - L31 * L41 * D1 - L32 * L42 * D2) / D3;
+    float L53 = (A53 - L31 * L51 * D1 - L32 * L52 * D2) / D3;
+    float L63 = (A63 - L31 * L61 * D1 - L32 * L62 * D2) / D3;
+
+    float D4 = A44 - (L41 * L41 * D1 + L42 * L42 * D2 + L43 * L43 * D3);
+    float L54 = (A54 - L41 * L51 * D1 - L42 * L52 * D2 - L43 * L53 * D3) / D4;
+    float L64 = (A64 - L41 * L61 * D1 - L42 * L62 * D2 - L43 * L63 * D3) / D4;
+
+    float D5 = A55 - (L51 * L51 * D1 + L52 * L52 * D2 + L53 * L53 * D3 + L54 * L54 * D4);
+    float L65 = (A65 - L51 * L61 * D1 - L52 * L62 * D2 - L53 * L63 * D3 - L54 * L64 * D4) / D5;
+
+    float D6 = A66 - (L61 * L61 * D1 + L62 * L62 * D2 + L63 * L63 * D3 + L64 * L64 * D4 + L65 * L65 * D5);
+
+    float y1 = bLin.x;
+    float y2 = bLin.y - L21 * y1;
+    float y3 = bLin.z - L31 * y1 - L32 * y2;
+    float y4 = bAng.x - L41 * y1 - L42 * y2 - L43 * y3;
+    float y5 = bAng.y - L51 * y1 - L52 * y2 - L53 * y3 - L54 * y4;
+    float y6 = bAng.z - L61 * y1 - L62 * y2 - L63 * y3 - L64 * y4 - L65 * y5;
+
+    float z1 = y1 / D1;
+    float z2 = y2 / D2;
+    float z3 = y3 / D3;
+    float z4 = y4 / D4;
+    float z5 = y5 / D5;
+    float z6 = y6 / D6;
+
+    xAng.z = z6;
+    xAng.y = z5 - L65 * xAng.z;
+    xAng.x = z4 - L54 * xAng.y - L64 * xAng.z;
+    xLin.z = z3 - L43 * xAng.x - L53 * xAng.y - L63 * xAng.z;
+    xLin.y = z2 - L32 * xLin.z - L42 * xAng.x - L52 * xAng.y - L62 * xAng.z;
+    xLin.x = z1 - L21 * xLin.y - L31 * xLin.z - L41 * xAng.x - L51 * xAng.y - L61 * xAng.z;
+}
+
+
+
+void main() {
+	uint id = gl_GlobalInvocationID.x;
+
+	if (id >= rigidbodyCount || rigids[id].isStatic == 1 || colors[id] != color) {
+		return;
+	}
+	
+	mat3 MLin = mat3(
+		rigids[id].mass, 0, 0,
+		0, rigids[id].mass, 0,
+		0, 0, rigids[id].mass
+	);
+	mat3 MAng = mat3(
+		rigids[id].moment.x, 0, 0,
+		0, rigids[id].moment.y, 0, 
+		0, 0, rigids[id].moment.z
+	);
+
+	mat3 lhsLin = MLin / (dt * dt);
+	mat3 lhsAng = MAng / (dt * dt);
+	mat3 lhsCross = mat3(0.0);
+
+	vec3 rhsLin = MLin / (dt * dt) * (rigids[id].positionLin - rigids[id].inertialLin);
+	vec3 rhsAng = MAng / (dt * dt) * subAng(rigids[id].positionAng, rigids[id].inertialAng);
+
+	
+	int cur = rigids[id].listHead;
+	while (cur != -1) {				
+		if (manifolds[cur].numContacts > 0)
+			updatePrimal(cur, id, alpha, lhsLin, lhsAng, lhsCross, rhsLin, rhsAng);
+		cur = manifolds[cur].force.next;
+	}
+	vec3 dxLin, dxAng;
+	solve(lhsLin, lhsAng, lhsCross, -rhsLin, -rhsAng, dxLin, dxAng);
+	
+	updatedRigids[id].positionLin = rigids[id].positionLin + dxLin;
+	updatedRigids[id].positionAng = addAng(rigids[id].positionAng, dxAng);
+	//rigids[id].positionLin = rigids[id].positionLin + dxLin;
+	//rigids[id].positionAng = addAng(rigids[id].positionAng, dxAng);
+    
+
+}

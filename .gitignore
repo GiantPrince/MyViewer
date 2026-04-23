@@ -24,3 +24,6 @@ checkImage.cpp
 A2/
 A3/
 pre/
+final/
+*.bat
+avbd.comp

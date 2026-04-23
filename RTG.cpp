@@ -223,7 +223,7 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 #endif
 
 	
-
+	
 	if (!configuration.is_cube_utility)
 	{
 		if (configuration.scene_file == "") {
@@ -268,8 +268,17 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 		instance_layers.emplace_back("VK_LAYER_KHRONOS_validation");
 	}
 
+	VkValidationFeatureEnableEXT enables[] = { VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT };
+	VkValidationFeaturesEXT nfeatures{};
+	nfeatures.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
+	nfeatures.enabledValidationFeatureCount = 1;
+	nfeatures.pEnabledValidationFeatures = enables;
+
+	
+
 	VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info{
 		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+		.pNext = &nfeatures,
 		.messageSeverity =
 		VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
 		VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
@@ -280,7 +289,8 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 			| VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
 			| VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
 		.pfnUserCallback = debug_callback,
-		.pUserData = nullptr
+		.pUserData = nullptr,
+		
 	};
 
 	VkInstanceCreateInfo instance_create_info{
@@ -545,7 +555,7 @@ RTG::RTG(Configuration const& configuration_) : helpers(*this) {
 				.descriptorBindingPartiallyBound = VK_TRUE,
 				.runtimeDescriptorArray = VK_TRUE
 			};*/
-
+			device_extensions.emplace_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
 			VkDeviceCreateInfo device_create_info{
 				.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,				
 				.queueCreateInfoCount = static_cast<uint32_t>(queue_create_info.size()),
