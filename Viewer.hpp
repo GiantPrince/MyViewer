@@ -240,7 +240,7 @@ struct Viewer : RTG::Application {
 			} shape;
 
 			float3 prevVelocityLin; 
-			uint32_t listHead;
+			int32_t listHead;
 
 			float3 size; 
 			float pad1_;

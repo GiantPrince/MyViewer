@@ -183,9 +183,6 @@ void solve(mat3 aLin, mat3 aAng, mat3 aCross, vec3 bLin, vec3 bAng, out vec3 xLi
     xLin.y = z2 - L32 * xLin.z - L42 * xAng.x - L52 * xAng.y - L62 * xAng.z;
     xLin.x = z1 - L21 * xLin.y - L31 * xLin.z - L41 * xAng.x - L51 * xAng.y - L61 * xAng.z;
 }
-
-
-
 void main() {
 	uint id = gl_GlobalInvocationID.x;
 
@@ -213,11 +210,23 @@ void main() {
 
 	
 	int cur = rigids[id].listHead;
+
+	int n = 0;
+	int m = 0;
+	
 	while (cur != -1) {				
-		if (manifolds[cur].numContacts > 0)
+		
+		if (manifolds[cur].numContacts > 0) {
 			updatePrimal(cur, id, alpha, lhsLin, lhsAng, lhsCross, rhsLin, rhsAng);
+			n += 1;
+		}
+		m += 1;
 		cur = manifolds[cur].force.next;
 	}
+	if (m > 20) {
+		debugPrintfEXT("id = %d, n = %d, m = %d", id, n, m);
+	}
+	//debugPrintfEXT("here");
 	vec3 dxLin, dxAng;
 	solve(lhsLin, lhsAng, lhsCross, -rhsLin, -rhsAng, dxLin, dxAng);
 	

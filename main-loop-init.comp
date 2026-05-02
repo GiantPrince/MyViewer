@@ -762,8 +762,6 @@ void main() {
 		rigids[id].inertialAng = addAng(rigids[id].positionAng, rigids[id].velocityAng * dt);
 
 		vec3 accel = (rigids[id].velocityLin - rigids[id].prevVelocityLin) / dt;
-		if (id == 0)
-			debugPrintfEXT("accel = %f %f %f \n", accel.x, accel.y, accel.z);
 		
 		float accelExt = accel.y * sign(gravity);
 

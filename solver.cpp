@@ -125,10 +125,14 @@ void Solver::step()
 
                 float3 rhsLin = MLin / (dt * dt) * (body->positionLin - body->inertialLin);
                 float3 rhsAng = MAng / (dt * dt) * (body->positionAng - body->inertialAng);
-                
-                for (Force* force = body->forces; force != 0; force = (force->bodyA == body) ? force->nextA : force->nextB) {                    
+                int n = 0;
+                for (Force* force = body->forces; force != 0; force = (force->bodyA == body) ? force->nextA : force->nextB) { 
+                    n++;
                     force->updatePrimal(body, alpha, lhsLin, lhsAng, lhsCross, rhsLin, rhsAng);                    
-                }                
+                }               
+                if (n > 10) {
+                    n = 0;
+                }
                 
                 float3 dxLin, dxAng;
                 solve(lhsLin, lhsAng, lhsCross, -rhsLin, -rhsAng, dxLin, dxAng);

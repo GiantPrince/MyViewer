@@ -43,6 +43,7 @@ void main() {
 		//debugPrintfEXT("id = %d, velocity = %f %f %f", id, rigids[id].velocityLin.x, rigids[id].velocityLin.y, rigids[id].velocityLin.z);
 		rigids[id].velocityAng = subAng(rigids[id].positionAng,rigids[id].initialAng) / dt;
 	}
+	//debugPrintfEXT("v update %d", id);
    
 
 }

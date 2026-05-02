@@ -38,6 +38,8 @@ struct Rigid
 
 };
 
+
+
 struct updatedRigid
 {
 	vec3 positionLin;
@@ -120,6 +122,7 @@ layout(set=4, binding=0) coherent buffer Counter {
 
 
 
+
 const float PLANE_EPSILON = 1.0e-5f;
 const uint SPHERE = 0;
 const uint BOX = 1;
@@ -136,7 +139,7 @@ const uint MAX_CONTACTS = 8;
 const int MAX_POLY_VERTS = 16;
 const float COLLISION_MARGIN = 0.01f;
 const float PENALTY_MIN = 1.0f;
-const float PENALTY_MAX = 10000000000.0f;
+const float PENALTY_MAX = 100000000000.0f;
 const float STICK_THRESH = 0.00001f;
 
 // solver constants
@@ -145,7 +148,7 @@ const float dt = 1.0 / 60.0;
 const float gravity = -10.0;
 const int iterations = 10;
 
-const float betaLin = 10000.0f;
+const float betaLin = 1000000.0f;
 const float betaAng = 100.0f;
     
 const float alpha = 0.99f;    

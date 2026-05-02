@@ -22,7 +22,7 @@ void main() {
 	int last = -1;
 	int listHead = -1;
 	
-	
+
 	
 	int forceCount = 0;
     for (uint i = 0; i < rigidbodyCount; i++) {
@@ -31,12 +31,11 @@ void main() {
         if (rigids[id].radius + rigids[i].radius > distance(rigids[id].positionLin, rigids[i].positionLin)) {
 			
             int index = atomicAdd(globalManifoldCount, 1);			
-			if (index >= rigidbodyCount * rigidbodyCount / 2) {
-				continue;
-			}
+			
             manifolds[index].force.bodyA = id;
             manifolds[index].force.bodyB = i;
 			manifolds[index].force.next = -1;
+			manifolds[index].numContacts = 0;
 			if (last == -1) {
 				listHead = index;
 				last = index;

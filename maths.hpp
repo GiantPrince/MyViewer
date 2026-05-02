@@ -194,7 +194,7 @@ inline float3x3 operator*(float3x3 a, float3x3 b) {
 	return {
 		float3{dot(a.row[0], b.col(0)), dot(a.row[0], b.col(1)), dot(a.row[0], b.col(2))},
 		float3{dot(a.row[1], b.col(0)), dot(a.row[1], b.col(1)), dot(a.row[1], b.col(2))},
-		float3{dot(a.row[2], b.col(0)), dot(a.row[2], b.col(1)), dot(a.row[2], b.col(2))} 
+		float3{dot(a.row[2], b.col(0)), dot(a.row[2], b.col(1)), dot(a.row[2], b.col(2))}
 	};
 }
 
@@ -214,7 +214,7 @@ inline quat operator*(quat a, quat b) {
 		a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
 		a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
 		a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
-		a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z 
+		a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z
 	};
 }
 
@@ -329,7 +329,7 @@ inline float3 cross(float3 a, float3 b) {
 	return {
 		a.y * b.z - a.z * b.y,
 		a.z * b.x - a.x * b.z,
-		a.x * b.y - a.y * b.x 
+		a.x * b.y - a.y * b.x
 	};
 }
 inline float3x3 outer(float3 a, float3 b) {
@@ -402,7 +402,7 @@ inline float3x3 rotation(quat q) {
 	return float3x3{
 		1.0f - 2.0f * (yy + zz), 2.0f * (xy + wz), 2.0f * (xz - wy),
 		2.0f * (xy - wz), 1.0f - 2.0f * (xx + zz), 2.0f * (yz + wx),
-		2.0f * (xz + wy), 2.0f * (yz - wx), 1.0f - 2.0f * (xx + yy) 
+		2.0f * (xz + wy), 2.0f * (yz - wx), 1.0f - 2.0f * (xx + yy)
 	};
 }
 
@@ -419,7 +419,7 @@ inline float3x3 diagonalize(float3x3 m) {
 }
 
 inline void solve(float3x3 aLin, float3x3 aAng, float3x3 aCross, float3 bLin, float3 bAng, float3& xLin, float3& xAng) {
-	
+
 	float A11 = aLin[0][0];
 	float A21 = aLin[1][0], A22 = aLin[1][1];
 	float A31 = aLin[2][0], A32 = aLin[2][1], A33 = aLin[2][2];
@@ -427,7 +427,7 @@ inline void solve(float3x3 aLin, float3x3 aAng, float3x3 aCross, float3 bLin, fl
 	float A51 = aCross[1][0], A52 = aCross[1][1], A53 = aCross[1][2], A54 = aAng[1][0], A55 = aAng[1][1];
 	float A61 = aCross[2][0], A62 = aCross[2][1], A63 = aCross[2][2], A64 = aAng[2][0], A65 = aAng[2][1], A66 = aAng[2][2];
 
-	
+
 	float L21 = A21 / A11;
 	float L31 = A31 / A11;
 
@@ -461,7 +461,7 @@ inline void solve(float3x3 aLin, float3x3 aAng, float3x3 aCross, float3 bLin, fl
 
 	float D6 = A66 - (L61 * L61 * D1 + L62 * L62 * D2 + L63 * L63 * D3 + L64 * L64 * D4 + L65 * L65 * D5);
 
-	
+
 
 
 	float y1 = bLin[0];
@@ -471,7 +471,7 @@ inline void solve(float3x3 aLin, float3x3 aAng, float3x3 aCross, float3 bLin, fl
 	float y5 = bAng[1] - L51 * y1 - L52 * y2 - L53 * y3 - L54 * y4;
 	float y6 = bAng[2] - L61 * y1 - L62 * y2 - L63 * y3 - L64 * y4 - L65 * y5;
 
-	
+
 	float z1 = y1 / D1;
 	float z2 = y2 / D2;
 	float z3 = y3 / D3;
@@ -480,7 +480,7 @@ inline void solve(float3x3 aLin, float3x3 aAng, float3x3 aCross, float3 bLin, fl
 
 	float z6 = y6 / D6;
 
-	
+
 
 
 	xAng[2] = z6;

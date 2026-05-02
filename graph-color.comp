@@ -16,12 +16,10 @@ void graph_color(uint id) {
 			if (manifolds[cur].numContacts != 0 && color < 32) {
 				occupied_mask |= (1u << color);
 			}
-			if (color >= 32) {
-				debugPrintfEXT("id %d color = %d", manifolds[cur].force.bodyB, color);
-			}
+			
 			cur = manifolds[cur].force.next;
 		}
-        
+        //debugPrintfEXT("color = %d", int(findLSB(~occupied_mask)));
         colors[rid] = int(findLSB(~occupied_mask));
 		
 	}	
