@@ -201,6 +201,7 @@ struct Viewer : RTG::Application {
 		VkDescriptorSetLayout set2_Manifolds = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set3_Colors = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set4_Counter = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set5_Indices = VK_NULL_HANDLE;
 
 		struct Push {
 			uint32_t rigidbody_count;

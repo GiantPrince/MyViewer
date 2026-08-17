@@ -420,4 +420,9 @@ void Viewer::AVBDPipeline::destroy(RTG& rtg)
 		vkDestroyDescriptorSetLayout(rtg.device, set4_Counter, nullptr);
 		set4_Counter = VK_NULL_HANDLE;
 	}
+
+	if (set5_Indices != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set5_Indices, nullptr);
+		set5_Indices = VK_NULL_HANDLE;
+	}
 }

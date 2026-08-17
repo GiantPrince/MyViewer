@@ -76,7 +76,6 @@ const shadow_map_shaders = [
 main_objs.push( maek.CPP('Viewer-ShadowMapPipeline.cpp', undefined, { depends:[...shadow_map_shaders] } ) );
 
 const avbd_shaders = [
-	maek.GLSLC('avbd.comp'),
 	maek.GLSLC('broad-collision.comp'),
 	maek.GLSLC('precise-collision.comp'),
 	maek.GLSLC('graph-color.comp'),
