@@ -366,7 +366,41 @@ uint buildFaceManifold(uint bodyA, uint bodyB, OBB boxA, OBB boxB, bool referenc
 	}
 
 
+// Exact AABB face intersection avoids clipping a huge ground polygon down to
+// a small cube (and the cancellation in its edge/plane intersections).
+uint alignedBoxContacts(uint a, uint b, inout GeometricContact contacts[8], inout mat3 basis) {
+    vec3 ha = rigids[a].size*0.5, hb = rigids[b].size*0.5;
+    vec3 pa = rigids[a].positionLin, pb = rigids[b].positionLin;
+    vec3 delta = pb-pa, separation = abs(delta)-(ha+hb);
+    if (any(greaterThan(separation,vec3(0)))) return 0;
+    int axis = 0;
+    if (separation.y > separation[axis]) axis = 1;
+    if (separation.z > separation[axis]) axis = 2;
+    int u = (axis+1)%3, v = (axis+2)%3;
+    float direction = delta[axis] < 0 ? -1 : 1;
+    vec3 normal = vec3(0); normal[axis] = direction;
+    basis = orthonormal(-normal);
+    vec3 lo = max(pa-ha,pb-hb), hi = min(pa+ha,pb+hb);
+    uint count = 0; vec3 midpoints[8];
+    for (uint k = 0; k < 4; ++k) {
+        vec3 xa = pa;
+        xa[u] = (k == 1 || k == 2) ? hi[u] : lo[u];
+        xa[v] = k >= 2 ? hi[v] : lo[v];
+        vec3 xb = xa;
+        xa[axis] = pa[axis]+direction*ha[axis];
+        xb[axis] = pb[axis]-direction*hb[axis];
+        // A separate feature namespace retires anchors on entering/leaving this path.
+        uint feature = 0x80000000u | (uint(axis)<<16) | (direction < 0 ? 256u : 0u) | k;
+        addContact(a,b,contacts,count,midpoints,xa,xb,feature);
+    }
+    return count;
+}
+
 uint boxBoxCollide(uint bodyA, uint bodyB, inout GeometricContact contacts[8], inout mat3 basisOut) {
+    if (all(equal(rigids[bodyA].positionAng.xyz,vec3(0))) &&
+        all(equal(rigids[bodyB].positionAng.xyz,vec3(0))))
+        return alignedBoxContacts(bodyA,bodyB,contacts,basisOut);
+
     OBB boxA = makeOBB(bodyA);
 	OBB boxB = makeOBB(bodyB);
 	vec3 delta = boxB.center - boxA.center;
