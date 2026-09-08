@@ -5,6 +5,8 @@
 layout(push_constant) uniform Push {
     uint rigidbodyCount;
 	int color;
+ uint hashSize; uint slotsPerBody; float cellSize;
+ float dt; float gravity; float betaLin; float alpha; float gamma;
 };
 
 struct Rigid
@@ -50,6 +52,7 @@ struct Force {
     uint bodyA;
     uint bodyB;
 	int next;
+ int nextB;
 };
 
 
@@ -64,17 +67,14 @@ struct FaceFrame {
 };
 
 
-struct Contact
-{
-    uint feature;
-    vec3 rA;
-    vec3 rB;
-    vec3 C0;
-    vec3 penalty;
-    vec3 lambda;
-    bool stick;
+// 80 bytes; shared with GpuAVBD.hpp.
+struct Contact {
+ vec3 rA; uint feature;
+ vec3 rB; bool stick;
+ vec3 C0; float pad0;
+ vec3 penalty; float pad1;
+ vec3 lambda; float pad2;
 };
-
 struct Manifold {
     Force force;
     Contact contacts[8];
@@ -104,28 +104,32 @@ layout(set=0, binding=0, std140) buffer Rigids{
 	Rigid rigids[];
 };
 
-layout(set=1, binding=0, std140) buffer UpdatedRigids{
-	updatedRigid updatedRigids[];
+layout(set=1, binding=0, std430) buffer Scratch { int scratch[]; };
+layout(set=2, binding=0, std430) buffer Manifolds { Manifold manifolds[]; };
+layout(set=3, binding=0, std430) buffer Graph { int colors[]; };
+layout(set=4, binding=0, std430) buffer Counter {
+ uint errors; uint staticCount; uint activeCount; uint retainedCount;
+ uint colorCounts[32];
+ uint dispatches[99]; // xyz for 32 body colors, then active contacts
 };
-
-layout(set=2, binding=0, std140) coherent buffer Manifolds{
-	Manifold manifolds[];
-};
-
-layout(set=3, binding=0, std140) buffer graphColor{
-	int colors[];
-};
-
-layout(set=4, binding=0) coherent buffer Counter {
-	int globalManifoldCount;
-};
-
-
-
-
+uint nextOffset() { return hashSize; }
+uint staticOffset() { return hashSize + rigidbodyCount; }
+uint activeOffset() { return hashSize + 2 * rigidbodyCount; }
+uint hashCell(ivec3 c) {
+ uvec3 v = uvec3(c);
+ return ((v.x * 73856093u) ^ (v.y * 19349663u) ^ (v.z * 83492791u)) & (hashSize - 1);
+}
+uint priority(uint x) {
+ x = ((x >> 16) ^ x) * 0x45d9f3bu;
+ x = ((x >> 16) ^ x) * 0x45d9f3bu;
+ return (x >> 16) ^ x;
+}
+int nextContact(int index, uint body) {
+ return manifolds[index].force.bodyA == body ? manifolds[index].force.next : manifolds[index].force.nextB;
+}
 const float PLANE_EPSILON = 1.0e-5f;
-const uint SPHERE = 0;
-const uint BOX = 1;
+const uint SPHERE = 1;
+const uint BOX = 0;
 const uint AXIS_FACE_A = 0;
 const uint AXIS_FACE_B = 1;
 const uint AXIS_EDGE = 2;
@@ -134,24 +138,12 @@ const uint AXIS_SPHERE = 4;
 const float FLT_MAX = 3e+38;
 const float SAT_AXIS_EPSILON = 1e-6f;
 const uint MAX_ITERATIONS = 10;
-const float CONTACT_MERGE_DIST_SQ = 0.001f;
+const float CONTACT_MERGE_DIST_SQ = 0.000001f;
 const uint MAX_CONTACTS = 8;
 const int MAX_POLY_VERTS = 16;
 const float COLLISION_MARGIN = 0.01f;
 const float PENALTY_MIN = 1.0f;
-const float PENALTY_MAX = 100000000000.0f;
+const float PENALTY_MAX = 10000000000.0f;
 const float STICK_THRESH = 0.00001f;
-
-// solver constants
-
-const float dt = 1.0 / 60.0;
-const float gravity = -10.0;
-const int iterations = 10;
-
-const float betaLin = 1000000.0f;
-const float betaAng = 100.0f;
-    
-const float alpha = 0.99f;    
-const float gamma = 0.999f;
 
 #endif

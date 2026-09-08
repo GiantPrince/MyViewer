@@ -1,0 +1,15 @@
+#version 450
+#include "AVBD-header.glsl"
+layout(local_size_x = 128) in;
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= rigidbodyCount) return;
+    rigids[id].listHead = -1;
+    colors[id] = -1;
+    if (rigids[id].isStatic != 0) {
+        scratch[staticOffset() + atomicAdd(staticCount, 1)] = int(id);
+    } else {
+        ivec3 cell = ivec3(floor(rigids[id].positionLin / cellSize));
+        scratch[nextOffset() + id] = atomicExchange(scratch[hashCell(cell)], int(id));
+    }
+}

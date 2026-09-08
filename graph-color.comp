@@ -1,42 +1,24 @@
 #version 450
-#extension GL_EXT_debug_printf : enable
-
 #include "AVBD-header.glsl"
-
-layout(local_size_x = 8, local_size_y = 1, local_size_z = 1) in;
-
-void graph_color(uint id) {
-
-	for (uint i = 0; i < rigidbodyCount; i++) {
-		uint rid = i;
-		uint occupied_mask = 0;
-		int cur = rigids[rid].listHead;
-		while (cur != -1) {
-			int color = colors[manifolds[cur].force.bodyB];
-			if (manifolds[cur].numContacts != 0 && color < 32) {
-				occupied_mask |= (1u << color);
-			}
-			
-			cur = manifolds[cur].force.next;
-		}
-        //debugPrintfEXT("color = %d", int(findLSB(~occupied_mask)));
-        colors[rid] = int(findLSB(~occupied_mask));
-		
-	}	
-}
-
+layout(local_size_x = 128) in;
 void main() {
-   
-	
-    uint id = gl_GlobalInvocationID.x;
-	
-	if (id * 16 >= rigidbodyCount) {
-		return;
-	}
-	if (id != 0) {
-		return;
-	}
-	graph_color(id);
-    
-
+ uint id = gl_GlobalInvocationID.x;
+ if (id >= rigidbodyCount || rigids[id].isStatic != 0 || colors[id] >= 0) return;
+ uint weight = priority(id); uint occupied = 0;
+ for (int slot = rigids[id].listHead; slot >= 0; slot = nextContact(slot, id)) {
+  uint other = manifolds[slot].force.bodyA == id ? manifolds[slot].force.bodyB : manifolds[slot].force.bodyA;
+  if (rigids[other].isStatic != 0) continue;
+  int c = atomicAdd(colors[other], 0);
+  // Treat writes from this dispatch as uncolored, independent of scheduling.
+  if (c < 0 || c / 32 == color + 1) {
+   uint w = priority(other);
+   if (w < weight || (w == weight && other < id)) return;
+  } else occupied |= 1u << (c & 31);
+ }
+ int chosen = findLSB(~occupied);
+ if (chosen < 0) { atomicOr(errors, 2u); return; }
+ atomicExchange(colors[id], (color + 1) * 32 + chosen);
+ uint offset = atomicAdd(colorCounts[chosen], 1);
+ colors[rigidbodyCount * (1 + chosen) + offset] = int(id);
+ atomicMax(dispatches[chosen * 3], offset / 128 + 1);
 }

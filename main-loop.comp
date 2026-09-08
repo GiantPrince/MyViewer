@@ -1,9 +1,9 @@
 #version 450
-#extension GL_EXT_debug_printf : enable
+
 
 #include "AVBD-header.glsl"
 
-layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
 vec3 rotate(vec4 angle, vec3 v) {
 	vec3 u = vec3( angle.x, angle.y, angle.z );
@@ -80,13 +80,6 @@ void updatePrimal(uint manifoldIndex, uint body, float alpha, inout mat3 lhsLin,
 			vec3(0.0, 0.0, manifolds[manifoldIndex].contacts[i].penalty.z)
 		);
 		vec3 C = manifolds[manifoldIndex].contacts[i].C0 * (1 - alpha) + jALin * dqALin + jBLin * dqBLin + jAAng * dqAAng + jBAng * dqBAng;
-		//debugPrintfEXT(
-		//	"Contact C = (%f, %f, %f), C0 = (%f, %f, %f)\n",
-		//	C.x, C.y, C.z,
-		//	manifolds[manifoldIndex].contacts[i].C0.x, 
-		//	manifolds[manifoldIndex].contacts[i].C0.y,
-		//	manifolds[manifoldIndex].contacts[i].C0.z
-		//);
 		vec3 F = K * C + manifolds[manifoldIndex].contacts[i].lambda;
 
 		F.x = min(F.x, 0.0f);
@@ -184,9 +177,11 @@ void solve(mat3 aLin, mat3 aAng, mat3 aCross, vec3 bLin, vec3 bAng, out vec3 xLi
     xLin.x = z1 - L21 * xLin.y - L31 * xLin.z - L41 * xAng.x - L51 * xAng.y - L61 * xAng.z;
 }
 void main() {
-	uint id = gl_GlobalInvocationID.x;
+	uint lane = gl_GlobalInvocationID.x;
+ if (lane >= colorCounts[color]) return;
+ uint id = uint(colors[rigidbodyCount * (1 + color) + lane]);
 
-	if (id >= rigidbodyCount || rigids[id].isStatic == 1 || colors[id] != color) {
+	if (id >= rigidbodyCount || rigids[id].isStatic == 1) {
 		return;
 	}
 	
@@ -221,19 +216,15 @@ void main() {
 			n += 1;
 		}
 		m += 1;
-		cur = manifolds[cur].force.next;
+		cur = nextContact(cur, id);
 	}
 	if (m > 20) {
-		debugPrintfEXT("id = %d, n = %d, m = %d", id, n, m);
 	}
-	//debugPrintfEXT("here");
 	vec3 dxLin, dxAng;
 	solve(lhsLin, lhsAng, lhsCross, -rhsLin, -rhsAng, dxLin, dxAng);
 	
-	updatedRigids[id].positionLin = rigids[id].positionLin + dxLin;
-	updatedRigids[id].positionAng = addAng(rigids[id].positionAng, dxAng);
-	//rigids[id].positionLin = rigids[id].positionLin + dxLin;
-	//rigids[id].positionAng = addAng(rigids[id].positionAng, dxAng);
+	rigids[id].positionLin = rigids[id].positionLin + dxLin;
+	rigids[id].positionAng = addAng(rigids[id].positionAng, dxAng);
     
 
 }

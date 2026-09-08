@@ -1,9 +1,9 @@
 #version 450
-#extension GL_EXT_debug_printf : enable
+
 
 #include "AVBD-header.glsl"
 
-layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
 vec4 conjugate(vec4 q) {
 	return vec4( -q.x, -q.y, -q.z, q.w );
@@ -35,15 +35,13 @@ void main() {
 		return;
 	}
 
+ if (colors[id] < 0 && rigids[id].isStatic == 0) atomicOr(errors, 2u);
+ if (any(isnan(rigids[id].positionLin)) || any(isinf(rigids[id].positionLin)) || any(isnan(rigids[id].positionAng)) || any(isinf(rigids[id].positionAng))) atomicOr(errors, 4u);
 	rigids[id].prevVelocityLin = rigids[id].velocityLin;
-	//debugPrintfEXT("id = %d, isStatic = %d", id, rigids[id].isStatic);
 	if (rigids[id].isStatic == 0) {
-		//debugPrintfEXT("p%f %f %f initial%f %f %f", rigids[id].positionLin.x, rigids[id].positionLin.y, rigids[id].positionLin.z, rigids[id].initialLin.x, rigids[id].initialLin.y, rigids[id].initialLin.z);
 		rigids[id].velocityLin = (rigids[id].positionLin - rigids[id].initialLin) / dt;
-		//debugPrintfEXT("id = %d, velocity = %f %f %f", id, rigids[id].velocityLin.x, rigids[id].velocityLin.y, rigids[id].velocityLin.z);
 		rigids[id].velocityAng = subAng(rigids[id].positionAng,rigids[id].initialAng) / dt;
 	}
-	//debugPrintfEXT("v update %d", id);
    
 
 }

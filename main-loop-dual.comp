@@ -1,9 +1,9 @@
 #version 450
-#extension GL_EXT_debug_printf : enable
+
 
 #include "AVBD-header.glsl"
 
-layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
 vec3 rotate(vec4 angle, vec3 v) {
 	vec3 u = vec3( angle.x, angle.y, angle.z );
@@ -108,10 +108,9 @@ void updateDual(uint manifoldIndex, float alpha)
 void main() {
 	uint id = gl_GlobalInvocationID.x;
 
-	if (id >= globalManifoldCount) {
+	if (id >= activeCount) {
 		return;
 	}
 
-	updateDual(id, alpha);
-	//debugPrintfEXT("dual %d", id);
+	updateDual(uint(scratch[activeOffset() + id]), alpha);
 }

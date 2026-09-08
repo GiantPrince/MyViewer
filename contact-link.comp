@@ -1,0 +1,12 @@
+#version 450
+#include "AVBD-header.glsl"
+layout(local_size_x = 128) in;
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= activeCount) return;
+    int slot = scratch[activeOffset() + id];
+    uint a = manifolds[slot].force.bodyA;
+    uint b = manifolds[slot].force.bodyB;
+    manifolds[slot].force.next = atomicExchange(rigids[a].listHead, slot);
+    manifolds[slot].force.nextB = rigids[b].isStatic != 0 ? -1 : atomicExchange(rigids[b].listHead, slot);
+}

@@ -1,9 +1,9 @@
 #version 450
-#extension GL_EXT_debug_printf : enable
+
 
 #include "AVBD-header.glsl"
 
-layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 
 
@@ -524,7 +524,7 @@ uint collide(uint bodyA, uint bodyB, inout Contact contacts[8], inout mat3 basis
 			return boxBoxCollide(bodyA, bodyB, contacts, basisOut);
 			
         case 1: 
-			return sphereBoxCollide(bodyB, bodyA, false, contacts, basisOut);
+			return sphereBoxCollide(bodyA, bodyB, false, contacts, basisOut);
                     
         case 2:           
             return sphereBoxCollide(bodyA, bodyB, true, contacts, basisOut);
@@ -543,13 +543,10 @@ vec3 transform(vec3 qLin, vec4 qAng, vec3 v) {
 }
 
 
-bool initialize(uint index) {    
-    manifolds[index].friction = sqrt(rigids[manifolds[index].force.bodyA].friction * rigids[manifolds[index].force.bodyB].friction);
-	
-	Contact newContacts[8];
+void storeContacts(uint index, Contact newContacts[8], uint newNumContacts, mat3 basis) {
+ manifolds[index].basis = basis;
+ manifolds[index].friction = sqrt(rigids[manifolds[index].force.bodyA].friction * rigids[manifolds[index].force.bodyB].friction);
 
-	uint newNumContacts = collide(manifolds[index].force.bodyA, manifolds[index].force.bodyB, newContacts, manifolds[index].basis);
-	
 	for (int i = 0; i < newNumContacts; i++)
 	{
 		for (int j = 0; j < manifolds[index].numContacts; j++)
@@ -559,6 +556,7 @@ bool initialize(uint index) {
 				vec3 newRA = newContacts[i].rA;
 				vec3 newRB = newContacts[i].rB;
 				newContacts[i] = manifolds[index].contacts[j];
+ atomicAdd(retainedCount, 1);
 
 				if (!manifolds[index].contacts[j].stick)
 				{
@@ -583,29 +581,60 @@ bool initialize(uint index) {
 		manifolds[index].contacts[i].penalty = clamp(manifolds[index].contacts[i].penalty * gamma, PENALTY_MIN, PENALTY_MAX);
 	}
 
-	return manifolds[index].numContacts > 0;
 }
 
-
+// One invocation owns persistent slots for one dynamic body. Slots are recycled
+// only after separation; each unordered pair occurs once, with stable orientation.
+void candidate(uint id, uint other) {
+ if (other == id || (rigids[other].isStatic == 0 && other < id)) return;
+ vec3 delta = rigids[id].positionLin - rigids[other].positionLin;
+ float radius = rigids[id].radius + rigids[other].radius;
+ if (dot(delta, delta) > radius * radius) return;
+ uint start = id * slotsPerBody;
+ int freeSlot = -1;
+ for (uint k = 0; k < slotsPerBody; ++k) {
+  uint slot = start + k;
+  if (manifolds[slot].numContacts == 0) freeSlot = int(slot);
+  else if (manifolds[slot].force.bodyB == other) return;
+ }
+ Contact contacts[8]; mat3 basis;
+ uint count = collide(id, other, contacts, basis);
+ if (count == 0) return;
+ if (freeSlot < 0) { atomicOr(errors, 1u); return; }
+ manifolds[freeSlot].force.bodyA = id;
+ manifolds[freeSlot].force.bodyB = other;
+ storeContacts(uint(freeSlot), contacts, count, basis);
+}
 void main() {
-    // first broadphase detecting the collision	
-    uint id = gl_GlobalInvocationID.x;
-	if (id >= globalManifoldCount) {
-		return;
-	}
-	initialize(id);
-	
-	//int cur = rigids[id].listHead;
-	//int a = 0;
-	//debugPrintfEXT("okpre update %d", id);
-	//while (cur != -1) {
-	//	initialize(cur);
-	//	cur = manifolds[cur].force.next;
-		
-	//}
-	//debugPrintfEXT("pre update %d", id);
-	
-	
-		
+ uint id = gl_GlobalInvocationID.x;
+ if (id >= rigidbodyCount || rigids[id].isStatic != 0) return;
+ uint start = id * slotsPerBody;
+ for (uint k = 0; k < slotsPerBody; ++k) {
+  uint slot = start + k;
+  if (manifolds[slot].numContacts == 0) continue;
+  Contact contacts[8]; mat3 basis;
+  uint count = collide(id, manifolds[slot].force.bodyB, contacts, basis);
+  storeContacts(slot, contacts, count, basis);
+ }
+ ivec3 cell = ivec3(floor(rigids[id].positionLin / cellSize));
+ // Cell size is at least the largest dynamic bounding diameter.
+ for (int z = -1; z <= 1; ++z)
+ for (int y = -1; y <= 1; ++y)
+ for (int x = -1; x <= 1; ++x) {
+  ivec3 target = cell + ivec3(x,y,z);
+  int other = scratch[hashCell(target)];
+  while (other >= 0) {
+   if (all(equal(ivec3(floor(rigids[other].positionLin / cellSize)), target))) candidate(id, uint(other));
+   other = scratch[nextOffset() + other];
+  }
+ }
+ // Large static ground boxes do not inflate the dynamic cell size.
+ for (uint k = 0; k < staticCount; ++k) candidate(id, uint(scratch[staticOffset() + k]));
+ for (uint k = 0; k < slotsPerBody; ++k) {
+  uint slot = start + k;
+  if (manifolds[slot].numContacts == 0) continue;
+  uint offset = atomicAdd(activeCount, 1);
+  scratch[activeOffset() + offset] = int(slot);
+  atomicMax(dispatches[96], offset / 128 + 1);
+ }
 }
-
