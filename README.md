@@ -127,6 +127,9 @@ Performance testing showed approximately **linear scaling with the number of lig
 
 ## Physics
 
+For the GPU backend, reproducible cube scenes, measured performance, and ten-second
+correctness checks, see [GPU AVBD](GPU-AVBD.md).
+
 The final extension integrates **Augmented Vertex Block Descent (AVBD)** into the renderer.
 
 The physics system supports:
