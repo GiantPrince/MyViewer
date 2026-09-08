@@ -3327,12 +3327,13 @@ void Viewer::load_objects() {
 
 void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_from_local, const mat4& node_world_from_local_normal) {
 	// compute parent from local	
-	std::stack<std::tuple<const S72::Node*, mat4, mat4>> stack;
+	auto& stack = traversal_stack;
+	stack.clear();
 
-	stack.push(std::make_tuple(static_cast<const S72::Node*>(node_root), node_world_from_local, node_world_from_local_normal));
+	stack.emplace_back(node_root, node_world_from_local, node_world_from_local_normal);
 
 	while (!stack.empty()) {
-		auto [root, world_from_local, world_from_local_normal] = stack.top();
+		auto [root, world_from_local, world_from_local_normal] = stack.back();
 		float sx = root->scale.x;
 		float sy = root->scale.y;
 		float sz = root->scale.z;
@@ -3370,15 +3371,16 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 		}
 
 		if (root->rigidbody != nullptr) {
-			if (physics_data.count(root->name)) {
-				tx = physics_data[root->name].rigid->positionLin[0];
-				ty = physics_data[root->name].rigid->positionLin[1];
-				tz = physics_data[root->name].rigid->positionLin[2];
+			if (auto found = physics_data.find(root->name); found != physics_data.end()) {
+				const Rigid& body = *found->second.rigid;
+				tx = body.positionLin[0];
+				ty = body.positionLin[1];
+				tz = body.positionLin[2];
 
-				rx = physics_data[root->name].rigid->positionAng[0];
-				ry = physics_data[root->name].rigid->positionAng[1];
-				rz = physics_data[root->name].rigid->positionAng[2];
-				rw = physics_data[root->name].rigid->positionAng[3];
+				rx = body.positionAng[0];
+				ry = body.positionAng[1];
+				rz = body.positionAng[2];
+				rw = body.positionAng[3];
 				//std::cout << tx << ", " << ty << ", " << tz << std::endl;
 			}			
 		}
@@ -3740,10 +3742,10 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 
 		
 
-		stack.pop();
+		stack.pop_back();
 
 		for (const auto child : root->children) {
-			stack.emplace(child, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
+			stack.emplace_back(child, WORLD_FROM_LOCAL, WORLD_FROM_LOCAL_NORMAL);
 		}
 
 
@@ -3755,6 +3757,14 @@ void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_fro
 
 void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, const mat4& world_from_local_normal)
 {
+	if (auto found = mesh_instance_cache.find(&mesh); found != mesh_instance_cache.end()) {
+		auto instance = found->second;
+		instance.transform.WORLD_FROM_LOCAL = world_from_local;
+		instance.transform.WORLD_FROM_LOCAL_NORMAL = world_from_local_normal;
+		object_instances.emplace_back(instance);
+		return;
+	}
+
 	uint32_t texture_index = 0;
 	uint32_t normal_map_index = 1;
 	uint32_t roughness_map_index = 0;
@@ -3860,6 +3870,8 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 			.roughness_map = roughness_map_index
 			});
 	}
+
+	mesh_instance_cache.emplace(&mesh, object_instances.back());
 
 }
 

@@ -361,6 +361,8 @@ struct Viewer : RTG::Application {
 		uint32_t instance_count = 1;
 	};
 	std::vector<ObjectInstance> object_instances;
+	std::unordered_map<const S72::Mesh*, ObjectInstance> mesh_instance_cache;
+	std::vector<std::tuple<const S72::Node*, mat4, mat4>> traversal_stack;
 
 	std::vector<ObjectsPipeline::Light> lights;
 	std::vector<uint32_t> shadow_map_sizes;
