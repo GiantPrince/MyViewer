@@ -9,7 +9,7 @@
 // No renderer or scene assets: measures the actual Vulkan solver on this device.
 int main(int argc, char** argv) {
     try {
-        uint32_t count = 1, frames = 600, layers = 1, iterations = 10, substeps = 1;
+        uint32_t count = 1, frames = 600, layers = 1, iterations = 10;
         float height = 3.0f, offset = 0, tilt = 0;
         bool compare = false, debug = false, sleeping = true, wake = false;
         for (int i = 1; i < argc; ++i) {
@@ -21,14 +21,13 @@ int main(int argc, char** argv) {
             else if (i+1 < argc && arg == "--cubes") count = uint32_t(std::stoul(argv[++i]));
             else if (i+1 < argc && arg == "--frames") frames = uint32_t(std::stoul(argv[++i]));
             else if (i+1 < argc && arg == "--layers") layers = uint32_t(std::stoul(argv[++i]));
-            else if (i+1 < argc && arg == "--substeps") substeps = uint32_t(std::stoul(argv[++i]));
             else if (i+1 < argc && arg == "--iterations") iterations = uint32_t(std::stoul(argv[++i]));
             else if (i+1 < argc && arg == "--tilt") tilt = std::stof(argv[++i]);
             else if (i+1 < argc && arg == "--offset") offset = std::stof(argv[++i]);
             else if (i+1 < argc && arg == "--height") height = std::stof(argv[++i]);
-            else throw std::runtime_error("Usage: avbd-benchmark [--cubes N] [--frames N>=600] [--layers N] [--height Y] [--offset XZ] [--tilt radians] [--iterations N] [--substeps N] [--compare] [--wake] [--no-sleep] [--debug]");
+            else throw std::runtime_error("Usage: avbd-benchmark [--cubes N] [--frames N>=600] [--layers N] [--height Y] [--offset XZ] [--tilt radians] [--iterations N] [--compare] [--wake] [--no-sleep] [--debug]");
         }
-        if (!count || frames < 600 || !layers || layers > count || !iterations || !substeps) throw std::runtime_error("Invalid benchmark dimensions");
+        if (!count || frames < 600 || !layers || layers > count || !iterations) throw std::runtime_error("Invalid benchmark dimensions");
         if (wake) { count = 2; layers = 2; }
         if (compare && count > 1000) throw std::runtime_error("CPU comparison is limited to 1000 cubes (CPU reference broad phase is quadratic).");
         RTG::Configuration config;
@@ -49,7 +48,6 @@ int main(int argc, char** argv) {
         };
         populate(gpuState); if (compare) populate(cpu);
         gpuState.iterations = int(iterations);
-        gpuState.dt /= float(substeps);
         GpuAVBD gpu(rtg,gpuState,8,sleeping);
         std::vector<double> wall, device;
         double maxPositionError = 0, finalPositionError = 0, cpuMinBottom = 1e9, minBottom = 1e9, minLateBottom = 1e9, maxLateSpeed = 0;
@@ -58,7 +56,7 @@ int main(int argc, char** argv) {
         std::ostringstream quiet;
         for (uint32_t frame = 0; frame < frames; ++frame) {
             auto start = std::chrono::steady_clock::now();
-            for (uint32_t substep = 0; substep < substeps; ++substep) gpu.step();
+            gpu.step();
             if (gpu.stats().sleepingCount) sawSleep = true;
             if (sawSleep && !gpu.stats().sleepingCount) sawWake = true;
             auto end = std::chrono::steady_clock::now();
