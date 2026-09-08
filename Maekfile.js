@@ -75,18 +75,6 @@ const shadow_map_shaders = [
 ];	
 main_objs.push( maek.CPP('Viewer-ShadowMapPipeline.cpp', undefined, { depends:[...shadow_map_shaders] } ) );
 
-const avbd_shaders = [
-	maek.GLSLC('broad-collision.comp'),
-	maek.GLSLC('precise-collision.comp'),
-	maek.GLSLC('graph-color.comp'),
-	maek.GLSLC('main-loop-init.comp'),
-	maek.GLSLC('main-loop.comp'),
-	maek.GLSLC('main-loop-copy-back.comp'),
-	maek.GLSLC('main-loop-dual.comp'),
-	maek.GLSLC('velocity-update.comp')
-];
-main_objs.push( maek.CPP('Viewer-AVBDPipeline.cpp', undefined, { depends:[...avbd_shaders] } ) );
-
 const cube_objs = [
     maek.CPP('main-cube.cpp')    
 ];
