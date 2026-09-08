@@ -8,6 +8,9 @@ namespace {
 const uint32_t broad[] =
 #include "spv/broad-collision.comp.inl"
 ;
+const uint32_t aligned[] =
+#include "spv/aligned-collision.comp.inl"
+;
 const uint32_t narrow[] =
 #include "spv/precise-collision.comp.inl"
 ;
@@ -105,8 +108,8 @@ GpuAVBD::GpuAVBD(RTG& r, Solver& s, uint32_t slots, bool sleeping) : rtg(r), sol
     pipelineLayoutInfo.setLayoutCount = 5; pipelineLayoutInfo.pSetLayouts = layouts.data();
     pipelineLayoutInfo.pushConstantRangeCount = 1; pipelineLayoutInfo.pPushConstantRanges = &range;
     VK(vkCreatePipelineLayout(rtg.device, &pipelineLayoutInfo, nullptr, &layout));
-    const uint32_t* codes[] = {broad,narrow,linkContacts,color,init,primal,dual,velocity,pairs};
-    const size_t bytes[] = {sizeof(broad),sizeof(narrow),sizeof(linkContacts),sizeof(color),sizeof(init),sizeof(primal),sizeof(dual),sizeof(velocity),sizeof(pairs)};
+    const uint32_t* codes[] = {broad,narrow,linkContacts,color,init,primal,dual,velocity,pairs,aligned};
+    const size_t bytes[] = {sizeof(broad),sizeof(narrow),sizeof(linkContacts),sizeof(color),sizeof(init),sizeof(primal),sizeof(dual),sizeof(velocity),sizeof(pairs),sizeof(aligned)};
     for (size_t i = 0; i < pipelines.size(); ++i) {
         VkShaderModule module = rtg.helpers.create_shader_module(codes[i],bytes[i]);
         VkComputePipelineCreateInfo info{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
@@ -173,6 +176,7 @@ void GpuAVBD::record() {
     stage(0,(push.count+127)/128);
     stage(8,(push.count+127)/128);
     vkCmdWriteTimestamp(command,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,queries,1);
+    stage(9,(push.count+63)/64);
     stage(1,(push.count+63)/64);
     vkCmdWriteTimestamp(command,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,queries,2);
     indirect(2,32);

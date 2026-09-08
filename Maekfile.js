@@ -78,6 +78,7 @@ main_objs.push( maek.CPP('Viewer-ShadowMapPipeline.cpp', undefined, { depends:[.
 const gpu_shaders = ['broad-collision.comp', 'pair-discovery.comp', 'precise-collision.comp', 'contact-link.comp',
     'graph-color.comp', 'main-loop-init.comp', 'main-loop.comp', 'main-loop-dual.comp',
     'velocity-update.comp'].map(file => maek.GLSLC(file, undefined, {depends: ['AVBD-header.glsl'], GLSLCFlags: ['-O']}));
+gpu_shaders.push(maek.GLSLC('precise-collision.comp', 'spv/aligned-collision.comp', {depends: ['AVBD-header.glsl'], GLSLCFlags: ['-O', '-DAVBD_ALIGNED_ONLY=1']}));
 const gpu_solver = maek.CPP('GpuAVBD.cpp', undefined, {depends: gpu_shaders});
 main_objs.push(gpu_solver);
 

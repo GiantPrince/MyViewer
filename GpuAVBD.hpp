@@ -70,7 +70,7 @@ private:
     VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
     std::array<VkDescriptorSet, 5> sets{};
     VkPipelineLayout layout = VK_NULL_HANDLE;
-    std::array<VkPipeline, 9> pipelines{};
+    std::array<VkPipeline, 10> pipelines{};
     VkCommandPool commandPool = VK_NULL_HANDLE;
     VkCommandBuffer command = VK_NULL_HANDLE;
     VkFence fence = VK_NULL_HANDLE;

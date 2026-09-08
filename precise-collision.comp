@@ -614,10 +614,27 @@ void main() {
  if (id >= rigidbodyCount || rigids[id].isStatic != 0 || rigids[id].sleeping != 0) return;
  uint live = 0;
  uint count = uint(scratch[candidateOffset() + id * 65]);
+ // Compile the aligned-only case separately so it never reserves the general
+ // clipping kernel's large private arrays/register footprint.
+ bool aligned = rigids[id].shape == BOX && all(equal(rigids[id].positionAng.xyz,vec3(0)));
+ for (uint k = 0; aligned && k < count; ++k) {
+  uint other = uint(scratch[candidateOffset()+id*65+1+k]);
+  aligned = rigids[other].shape == BOX && all(equal(rigids[other].positionAng.xyz,vec3(0)));
+ }
+#ifdef AVBD_ALIGNED_ONLY
+ if (!aligned) return;
+#else
+ if (aligned) return;
+#endif
+
  for (uint k = 0; k < count; ++k) {
   uint other = uint(scratch[candidateOffset() + id * 65 + 1 + k]);
   GeometricContact contacts[8]; mat3 basis;
+#ifdef AVBD_ALIGNED_ONLY
+  uint num = alignedBoxContacts(id, other, contacts, basis);
+#else
   uint num = collide(id, other, contacts, basis);
+#endif
   int found = -1;
   for (uint j = 0; j < slotsPerBody; ++j) {
    uint slot = id + j * rigidbodyCount;
