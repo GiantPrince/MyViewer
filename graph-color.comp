@@ -2,8 +2,10 @@
 #include "AVBD-header.glsl"
 layout(local_size_x = 128) in;
 void main() {
- uint id = gl_GlobalInvocationID.x;
- if (id >= rigidbodyCount || rigids[id].isStatic != 0 || colors[id] >= 0) return;
+ uint lane = gl_GlobalInvocationID.x;
+ if (lane >= awakeCount) return;
+ uint id = uint(scratch[awakeOffset()+lane]);
+ if (id >= rigidbodyCount || rigids[id].isStatic != 0 || rigids[id].sleeping != 0 || colors[id] >= 0) return;
  uint weight = priority(id); uint occupied = 0;
  for (int slot = rigids[id].listHead; slot >= 0; slot = nextContact(slot, id)) {
   uint other = manifolds[slot].force.bodyA == id ? manifolds[slot].force.bodyB : manifolds[slot].force.bodyA;

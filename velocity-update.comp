@@ -34,6 +34,7 @@ void main() {
 	if (id >= rigidbodyCount) {
 		return;
 	}
+    if (rigids[id].sleeping != 0) { atomicAdd(sleepingCount,1); return; }
 
  if (colors[id] < 0 && rigids[id].isStatic == 0) atomicOr(errors, 2u);
  if (any(isnan(rigids[id].positionLin)) || any(isinf(rigids[id].positionLin)) || any(isnan(rigids[id].positionAng)) || any(isinf(rigids[id].positionAng))) atomicOr(errors, 4u);
@@ -42,6 +43,31 @@ void main() {
 		rigids[id].velocityLin = (rigids[id].positionLin - rigids[id].initialLin) / dt;
 		rigids[id].velocityAng = subAng(rigids[id].positionAng,rigids[id].initialAng) / dt;
 	}
+    // Conservative sleep: no dynamic neighbors, multiple support contacts,
+    // converged gaps and force balance, and two seconds of negligible motion.
+    // Contacts and multipliers are retained unchanged until a dynamic AABB wakes us.
+    if (sleepEnabled != 0 && rigids[id].isStatic == 0) {
+        bool quiet = length(rigids[id].velocityLin) < 0.002 && length(rigids[id].velocityAng) < 0.002;
+        vec3 support = vec3(0); uint contacts = 0;
+        for (int slot = rigids[id].listHead; slot >= 0; slot = nextContact(slot,id)) {
+            uint other = manifolds[slot].force.bodyA == id ? manifolds[slot].force.bodyB : manifolds[slot].force.bodyA;
+            if (rigids[other].isStatic == 0) { quiet = false; break; }
+            for (uint k = 0; k < manifolds[slot].numContacts; ++k) {
+                Contact c = manifolds[slot].contacts[k];
+                quiet = quiet && abs(c.C0.x) < 0.0005;
+                support -= manifolds[slot].basis*c.lambda;
+                ++contacts;
+            }
+        }
+        vec3 residual = support + vec3(0,rigids[id].mass*gravity,0);
+        quiet = quiet && contacts >= 3 && length(residual) < 0.01*rigids[id].mass*abs(gravity);
+        rigids[id].quietSteps = quiet ? rigids[id].quietSteps+1 : 0;
+        if (rigids[id].quietSteps >= 120) {
+            rigids[id].sleeping = 1;
+            rigids[id].velocityLin = vec3(0); rigids[id].velocityAng = vec3(0); rigids[id].prevVelocityLin = vec3(0);
+            atomicAdd(sleepingCount,1);
+        }
+    }
    
 
 }

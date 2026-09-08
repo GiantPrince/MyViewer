@@ -7,6 +7,7 @@ layout(push_constant) uniform Push {
 	int color;
  uint hashSize; uint slotsPerBody; float cellSize;
  float dt; float gravity; float betaLin; float alpha; float gamma;
+ uint sleepEnabled;
 };
 
 struct Rigid
@@ -35,8 +36,10 @@ struct Rigid
 	vec3 prevVelocityLin;
 	int listHead;
 
-	vec3 size;    
-    vec3 moment;				    	
+	vec3 size;
+    uint quietSteps;
+    vec3 moment;
+    uint sleeping;
 
 };
 
@@ -108,13 +111,15 @@ layout(set=1, binding=0, std430) buffer Scratch { int scratch[]; };
 layout(set=2, binding=0, std430) buffer Manifolds { Manifold manifolds[]; };
 layout(set=3, binding=0, std430) buffer Graph { int colors[]; };
 layout(set=4, binding=0, std430) buffer Counter {
- uint errors; uint staticCount; uint activeCount; uint retainedCount;
+ uint errors; uint staticCount; uint activeCount; uint retainedCount; uint sleepingCount; uint awakeCount;
  uint colorCounts[32];
- uint dispatches[99]; // xyz for 32 body colors, then active contacts
+ uint dispatches[102]; // xyz for 32 body colors, active contacts, awake bodies
 };
 uint nextOffset() { return hashSize; }
 uint staticOffset() { return hashSize + rigidbodyCount; }
 uint activeOffset() { return hashSize + 2 * rigidbodyCount; }
+uint candidateOffset() { return activeOffset() + rigidbodyCount * slotsPerBody; }
+uint awakeOffset() { return candidateOffset() + rigidbodyCount * 65; }
 uint hashCell(ivec3 c) {
  uvec3 v = uvec3(c);
  return ((v.x * 73856093u) ^ (v.y * 19349663u) ^ (v.z * 83492791u)) & (hashSize - 1);
@@ -140,7 +145,8 @@ const float SAT_AXIS_EPSILON = 1e-6f;
 const uint MAX_ITERATIONS = 10;
 const float CONTACT_MERGE_DIST_SQ = 0.000001f;
 const uint MAX_CONTACTS = 8;
-const int MAX_POLY_VERTS = 16;
+// Clipping a quadrilateral against four side planes adds at most four vertices.
+const int MAX_POLY_VERTS = 8;
 const float COLLISION_MARGIN = 0.01f;
 const float PENALTY_MIN = 1.0f;
 const float PENALTY_MAX = 10000000000.0f;

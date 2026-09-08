@@ -75,6 +75,12 @@ const shadow_map_shaders = [
 ];	
 main_objs.push( maek.CPP('Viewer-ShadowMapPipeline.cpp', undefined, { depends:[...shadow_map_shaders] } ) );
 
+const gpu_shaders = ['broad-collision.comp', 'pair-discovery.comp', 'precise-collision.comp', 'contact-link.comp',
+    'graph-color.comp', 'main-loop-init.comp', 'main-loop.comp', 'main-loop-dual.comp',
+    'velocity-update.comp'].map(file => maek.GLSLC(file, undefined, {depends: ['AVBD-header.glsl'], GLSLCFlags: ['-O']}));
+const gpu_solver = maek.CPP('GpuAVBD.cpp', undefined, {depends: gpu_shaders});
+main_objs.push(gpu_solver);
+
 const cube_objs = [
     maek.CPP('main-cube.cpp')    
 ];
@@ -107,9 +113,13 @@ const cube_exe = maek.LINK([...ggx_objs], 'bin/cube');
 //}
 
 const main_exe = maek.LINK([...main_objs], 'bin/viewer');
+const benchmark_exe = maek.LINK([maek.CPP('avbd-benchmark.cpp'), gpu_solver,
+    'objs/Manifold' + maek.DEFAULT_OPTIONS.objSuffix, 'objs/joint' + maek.DEFAULT_OPTIONS.objSuffix,
+    'objs/solver' + maek.DEFAULT_OPTIONS.objSuffix, 'objs/Force' + maek.DEFAULT_OPTIONS.objSuffix,
+    'objs/Rigidbody' + maek.DEFAULT_OPTIONS.objSuffix, ...rtg], 'bin/avbd-benchmark');
 
 //default targets:
-maek.TARGETS = [main_exe, cube_exe];
+maek.TARGETS = [main_exe, cube_exe, benchmark_exe];
 
 //- - - - - - - - - - - - - - - - - - - - -
 function custom_flags_and_rules() {
@@ -235,7 +245,7 @@ function custom_flags_and_rules() {
 			await maek.run(command, `${task.label}: compile`,
 				async () => {
 					return {
-						read:[glslFile],
+						read:[glslFile, ...options.depends],
 						written:[spirvFile]
 					};
 				}

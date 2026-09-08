@@ -117,6 +117,7 @@ struct RTG {
 		std::string out_cubemap_file = "";
 
 		bool show_colliders = false;
+		bool gpu_physics = false;
 
 		//for configuration construction + management:
 		Configuration() = default;

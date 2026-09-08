@@ -92,6 +92,12 @@ void RTG::Configuration::parse(int argc, char** argv) {
 				surface_extent.width = conv("width");
 				surface_extent.height = conv("height");
 			}
+			else if (arg == "--physics") {
+				if (++argi >= argc) throw std::runtime_error("--physics requires cpu or gpu");
+				std::string mode = argv[argi];
+				if (mode != "cpu" && mode != "gpu") throw std::runtime_error("--physics requires cpu or gpu");
+				gpu_physics = mode == "gpu";
+			}
 			else if (arg == "--headless") {
 				headless = true;
 			}
@@ -171,6 +177,7 @@ void RTG::Configuration::usage(std::function< void(const char*, const char*) > c
 	callback("--physical-device <name>", "Run on the named physical device (guesses, otherwise).");
 	callback("--drawing-size <w> <h>", "Set the size of the surface to draw to.");
 	callback("--headless", "Don't create a window; read events from stdin.");
+	callback("--physics cpu|gpu", "Select AVBD backend (default cpu).");
 	callback("--tone-map <op>", "Specify a tone mapping operator.");
 	callback("--exposure <E>", "Set the value of exposure before tone operator.");
 	callback("--camera <name>", "Set the initial scene camera to be the one named <name>.");

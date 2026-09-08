@@ -53,57 +53,31 @@ vec3 subAng(vec4 a, vec4 b) {
 	return quatTime(a, inverse(b)).xyz * 2.0f;
 }
 
-void updateDual(uint manifoldIndex, float alpha)
-{
-	vec3 dqALin = rigids[manifolds[manifoldIndex].force.bodyA].positionLin - rigids[manifolds[manifoldIndex].force.bodyA].initialLin;
-	vec3 dqAAng = subAng(rigids[manifolds[manifoldIndex].force.bodyA].positionAng, rigids[manifolds[manifoldIndex].force.bodyA].initialAng);
-	vec3 dqBLin = rigids[manifolds[manifoldIndex].force.bodyB].positionLin - rigids[manifolds[manifoldIndex].force.bodyB].initialLin;
-	vec3 dqBAng = subAng(rigids[manifolds[manifoldIndex].force.bodyB].positionAng, rigids[manifolds[manifoldIndex].force.bodyB].initialAng);
-
-	for (int i = 0; i < manifolds[manifoldIndex].numContacts; i++) {
-		vec3 rAWorld = rotate(rigids[manifolds[manifoldIndex].force.bodyA].positionAng, manifolds[manifoldIndex].contacts[i].rA);
-		vec3 rBWorld = rotate(rigids[manifolds[manifoldIndex].force.bodyB].positionAng, manifolds[manifoldIndex].contacts[i].rB);
-
-		mat3 jALin = manifolds[manifoldIndex].basis;
-		mat3 jBLin = -manifolds[manifoldIndex].basis;
-		
-		mat3 jAAng = transpose(mat3(cross(rAWorld, jALin[0]), cross(rAWorld, jALin[1]), cross(rAWorld, jALin[2])));
-		mat3 jBAng = transpose(mat3(cross(rBWorld, jBLin[0]), cross(rBWorld, jBLin[1]), cross(rBWorld, jBLin[2])));
-
-		jALin = transpose(jALin);
-		jBLin = transpose(jBLin);
-		
-		mat3 K = mat3(
-			vec3(manifolds[manifoldIndex].contacts[i].penalty.x, 0.0, 0.0),
-			vec3(0.0, manifolds[manifoldIndex].contacts[i].penalty.y, 0.0),
-			vec3(0.0, 0.0, manifolds[manifoldIndex].contacts[i].penalty.z)
-		);
-		vec3 C = manifolds[manifoldIndex].contacts[i].C0 * (1 - alpha) + jALin * dqALin + jBLin * dqBLin + jAAng * dqAAng + jBAng * dqBAng;
-
-		vec3 F = K * C + manifolds[manifoldIndex].contacts[i].lambda;
-
-		F.x = min(F.x, 0.0f);
-
-		float bounds = abs(F.x) * manifolds[manifoldIndex].friction;
-		float frictionScale = length(vec2( F.y, F.z ));
-		if (frictionScale > bounds && frictionScale > 0) {
-			F.y *= bounds / frictionScale;
-			F.z *= bounds / frictionScale;
-		}
-
-		manifolds[manifoldIndex].contacts[i].lambda = F;
-
-		if (F.x < 0)
-			manifolds[manifoldIndex].contacts[i].penalty[0] = min(manifolds[manifoldIndex].contacts[i].penalty[0] + betaLin * abs(C.x), PENALTY_MAX);
-		if (frictionScale <= bounds) {
-			manifolds[manifoldIndex].contacts[i].penalty[1] = min(manifolds[manifoldIndex].contacts[i].penalty[1] + betaLin * abs(C.y), PENALTY_MAX);
-			manifolds[manifoldIndex].contacts[i].penalty[2] = min(manifolds[manifoldIndex].contacts[i].penalty[2] + betaLin * abs(C.z), PENALTY_MAX);
-			manifolds[manifoldIndex].contacts[i].stick = length(vec2(C.y, C.z)) < STICK_THRESH;
-		}
-	}
+void updateDual(uint index, float alpha) {
+ uint a = manifolds[index].force.bodyA, b = manifolds[index].force.bodyB;
+ vec3 dLin = (rigids[a].positionLin-rigids[a].initialLin)-(rigids[b].positionLin-rigids[b].initialLin);
+ vec3 da = subAng(rigids[a].positionAng,rigids[a].initialAng);
+ vec3 db = subAng(rigids[b].positionAng,rigids[b].initialAng);
+ mat3 basis = manifolds[index].basis;
+ float friction = manifolds[index].friction;
+ for (uint i = 0; i < manifolds[index].numContacts; ++i) {
+  Contact c = manifolds[index].contacts[i];
+  vec3 ra = rotate(rigids[a].positionAng,c.rA), rb = rotate(rigids[b].positionAng,c.rB);
+  vec3 C = c.C0*(1-alpha)+transpose(basis)*(dLin+cross(da,ra)-cross(db,rb));
+  vec3 F = c.penalty*C+c.lambda;
+  F.x = min(F.x,0);
+  float bounds = abs(F.x)*friction, tangential = length(F.yz);
+  if (tangential > bounds && tangential > 0) F.yz *= bounds/tangential;
+  if (F.x < 0) c.penalty.x = min(c.penalty.x+betaLin*abs(C.x),PENALTY_MAX);
+  if (tangential <= bounds) {
+   c.penalty.yz = min(c.penalty.yz+betaLin*abs(C.yz),vec2(PENALTY_MAX));
+   c.stick = length(C.yz) < STICK_THRESH;
+  }
+  manifolds[index].contacts[i].lambda = F;
+  manifolds[index].contacts[i].penalty = c.penalty;
+  manifolds[index].contacts[i].stick = c.stick;
+ }
 }
-
-
 
 void main() {
 	uint id = gl_GlobalInvocationID.x;

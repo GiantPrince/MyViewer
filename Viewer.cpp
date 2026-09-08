@@ -1619,7 +1619,10 @@ void Viewer::update_physics(float dt)
 		constraintInit = true;
 	}
 	// avbd
-	solver->step();
+	if (rtg.configuration.gpu_physics) {
+		if (!gpu_solver && solver->num_bodies) gpu_solver = std::make_unique<GpuAVBD>(rtg, *solver);
+		if (gpu_solver) gpu_solver->step();
+	} else solver->step();
 	
 	
 
@@ -3046,6 +3049,9 @@ void Viewer::on_input(InputEvent const& evt) {
 
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_R) {
 		time = 0;
+		gpu_solver.reset();
+		solver->clear();
+		constraintInit = false;
 		physics_data.clear();
 	}
 

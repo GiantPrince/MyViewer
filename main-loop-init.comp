@@ -23,6 +23,12 @@ vec3 subAng(vec4 a, vec4 b) {
 
 void main() {
 	uint id = gl_GlobalInvocationID.x;
+	if (id >= rigidbodyCount || rigids[id].sleeping != 0) return;
+	if (rigids[id].isStatic == 0) {
+		uint offset = atomicAdd(awakeCount,1);
+		scratch[awakeOffset()+offset] = int(id);
+		atomicMax(dispatches[99],offset/128+1);
+	}
 	
 	if (id < rigidbodyCount) {
 		//if (id == 0)

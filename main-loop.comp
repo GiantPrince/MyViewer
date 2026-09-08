@@ -54,67 +54,33 @@ vec3 subAng(vec4 a, vec4 b) {
 
 
 
-void updatePrimal(uint manifoldIndex, uint body, float alpha, inout mat3 lhsLin, inout mat3 lhsAng, inout mat3 lhsCross, inout vec3 rhsLin, inout vec3 rhsAng)
-{
-	vec3 dqALin = rigids[manifolds[manifoldIndex].force.bodyA].positionLin - rigids[manifolds[manifoldIndex].force.bodyA].initialLin;
-	vec3 dqAAng = subAng(rigids[manifolds[manifoldIndex].force.bodyA].positionAng, rigids[manifolds[manifoldIndex].force.bodyA].initialAng);
-	vec3 dqBLin = rigids[manifolds[manifoldIndex].force.bodyB].positionLin - rigids[manifolds[manifoldIndex].force.bodyB].initialLin;
-	vec3 dqBAng = subAng(rigids[manifolds[manifoldIndex].force.bodyB].positionAng, rigids[manifolds[manifoldIndex].force.bodyB].initialAng);
-	
-	for (int i = 0; i < manifolds[manifoldIndex].numContacts; i++)
-	{
-		vec3 rAWorld = rotate(rigids[manifolds[manifoldIndex].force.bodyA].positionAng, manifolds[manifoldIndex].contacts[i].rA);
-		vec3 rBWorld = rotate(rigids[manifolds[manifoldIndex].force.bodyB].positionAng, manifolds[manifoldIndex].contacts[i].rB);
-
-		mat3 jALin = manifolds[manifoldIndex].basis;
-		mat3 jBLin = -manifolds[manifoldIndex].basis;
-		
-		mat3 jAAng = transpose(mat3(cross(rAWorld, jALin[0]), cross(rAWorld, jALin[1]), cross(rAWorld, jALin[2])));
-		mat3 jBAng = transpose(mat3(cross(rBWorld, jBLin[0]), cross(rBWorld, jBLin[1]), cross(rBWorld, jBLin[2])));
-		jALin = transpose(jALin);
-		jBLin = transpose(jBLin);
-
-		mat3 K = mat3(
-			vec3(manifolds[manifoldIndex].contacts[i].penalty.x, 0.0, 0.0),
-			vec3(0.0, manifolds[manifoldIndex].contacts[i].penalty.y, 0.0),
-			vec3(0.0, 0.0, manifolds[manifoldIndex].contacts[i].penalty.z)
-		);
-		vec3 C = manifolds[manifoldIndex].contacts[i].C0 * (1 - alpha) + jALin * dqALin + jBLin * dqBLin + jAAng * dqAAng + jBAng * dqBAng;
-		vec3 F = K * C + manifolds[manifoldIndex].contacts[i].lambda;
-
-		F.x = min(F.x, 0.0f);
-
-		float bounds = abs(F.x) * manifolds[manifoldIndex].friction;
-		float frictionScale = length(vec2(F.y, F.z));
-		if (frictionScale > bounds && frictionScale > 0)
-		{
-			F.y *= bounds / frictionScale;
-			F.z *= bounds / frictionScale;
-		}
-		
-
-
-		mat3 jLin = body == manifolds[manifoldIndex].force.bodyA ? jALin : jBLin;
-		mat3 jAng = body == manifolds[manifoldIndex].force.bodyA ? jAAng : jBAng;
-
-		mat3 jLinT = transpose(jLin);
-		mat3 jAngT = transpose(jAng);
-		mat3 jAngTk = jAngT * K;
-
-		lhsLin += jLinT * K * jLin;
-		lhsAng += jAngTk * jAng;
-		lhsCross += jAngTk * jLin;
-		
-		rhsLin += jLinT * F;
-		rhsAng += jAngT * F;
-	}
-}
-
-uint hash_weight(uint x) {
-	x = ((x >> 16) ^ x) * 0x45d9f3b;
-    x = ((x >> 16) ^ x) * 0x45d9f3b;
-    x = (x >> 16) ^ x;
-    return x;
+// Accumulate rank-one constraint contributions rather than multiplying dense
+// matrices containing a diagonal penalty. This is the same CPU normal equation.
+void updatePrimal(uint index, uint body, float alpha, inout mat3 lhsLin, inout mat3 lhsAng, inout mat3 lhsCross, inout vec3 rhsLin, inout vec3 rhsAng) {
+ uint a = manifolds[index].force.bodyA, b = manifolds[index].force.bodyB;
+ vec3 dLin = (rigids[a].positionLin-rigids[a].initialLin)-(rigids[b].positionLin-rigids[b].initialLin);
+ vec3 da = subAng(rigids[a].positionAng,rigids[a].initialAng);
+ vec3 db = subAng(rigids[b].positionAng,rigids[b].initialAng);
+ mat3 basis = manifolds[index].basis;
+ float friction = manifolds[index].friction;
+ for (uint i = 0; i < manifolds[index].numContacts; ++i) {
+  Contact c = manifolds[index].contacts[i];
+  vec3 ra = rotate(rigids[a].positionAng,c.rA), rb = rotate(rigids[b].positionAng,c.rB);
+  vec3 C = c.C0*(1-alpha)+transpose(basis)*(dLin+cross(da,ra)-cross(db,rb));
+  vec3 F = c.penalty*C+c.lambda;
+  F.x = min(F.x,0);
+  float bounds = abs(F.x)*friction, tangential = length(F.yz);
+  if (tangential > bounds && tangential > 0) F.yz *= bounds/tangential;
+  vec3 r = body == a ? ra : rb;
+  float signJ = body == a ? 1 : -1;
+  for (int k = 0; k < 3; ++k) {
+   vec3 jl = basis[k]*signJ, ja = cross(r,jl);
+   lhsLin += outerProduct(jl,jl)*c.penalty[k];
+   lhsAng += outerProduct(ja,ja)*c.penalty[k];
+   lhsCross += outerProduct(ja,jl)*c.penalty[k];
+   rhsLin += jl*F[k]; rhsAng += ja*F[k];
+  }
+ }
 }
 
 void solve(mat3 aLin, mat3 aAng, mat3 aCross, vec3 bLin, vec3 bAng, out vec3 xLin, out vec3 xAng) {
@@ -206,19 +172,13 @@ void main() {
 	
 	int cur = rigids[id].listHead;
 
-	int n = 0;
-	int m = 0;
 	
 	while (cur != -1) {				
 		
 		if (manifolds[cur].numContacts > 0) {
 			updatePrimal(cur, id, alpha, lhsLin, lhsAng, lhsCross, rhsLin, rhsAng);
-			n += 1;
 		}
-		m += 1;
 		cur = nextContact(cur, id);
-	}
-	if (m > 20) {
 	}
 	vec3 dxLin, dxAng;
 	solve(lhsLin, lhsAng, lhsCross, -rhsLin, -rhsAng, dxLin, dxAng);

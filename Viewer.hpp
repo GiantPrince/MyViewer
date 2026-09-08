@@ -8,6 +8,7 @@
 #include "Physics.hpp"
 #include "mat4.hpp"
 #include "solver.hpp"
+#include "GpuAVBD.hpp"
 
 #include <GLFW/glfw3.h>
 
@@ -481,6 +482,7 @@ struct Viewer : RTG::Application {
 
 	// the solver
 	std::unique_ptr<Solver> solver;
+	std::unique_ptr<GpuAVBD> gpu_solver;
 
 	// update shadow maps
 	void update_shadow_maps();	

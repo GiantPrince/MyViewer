@@ -1,0 +1,54 @@
+#version 450
+#include "AVBD-header.glsl"
+layout(local_size_x = 128) in;
+vec3 rotate(vec4 q, vec3 v) {
+    vec3 t = cross(q.xyz,v)*2;
+    return v + q.w*t + cross(q.xyz,t);
+}
+vec3 extent(uint id) {
+    if (rigids[id].shape == SPHERE) return vec3(rigids[id].radius);
+    vec4 q = rigids[id].positionAng;
+    return (abs(rotate(q,vec3(1,0,0)))*rigids[id].size.x +
+            abs(rotate(q,vec3(0,1,0)))*rigids[id].size.y +
+            abs(rotate(q,vec3(0,0,1)))*rigids[id].size.z)*0.5;
+}
+void append(uint id, uint other, vec3 halfExtent, inout uint count) {
+    if (other == id || (rigids[other].isStatic == 0 && other < id)) return;
+    // A conservative world AABB avoids SAT/clipping for disjoint neighbors.
+    if (any(greaterThan(abs(rigids[id].positionLin-rigids[other].positionLin), halfExtent+extent(other)+vec3(1e-5)))) return;
+    // Only isolated bodies supported by static geometry may sleep. Wake both
+    // endpoints before narrow phase as soon as a dynamic AABB can touch them.
+    if (rigids[other].isStatic == 0) {
+        atomicExchange(rigids[id].sleeping,0u);
+        atomicExchange(rigids[other].sleeping,0u);
+        atomicExchange(rigids[id].quietSteps,0u);
+        atomicExchange(rigids[other].quietSteps,0u);
+    }
+    uint offset = candidateOffset()+id*65;
+    for (uint k = 0; k < count; ++k) if (scratch[offset+1+k] == int(other)) return;
+    if (count == 64) { atomicOr(errors,8u); return; }
+    scratch[offset+1+count++] = int(other);
+}
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= rigidbodyCount || rigids[id].isStatic != 0) return;
+    uint count = 0;
+    // Existing pairs first: separation frees slots before new contacts arrive.
+    for (uint k = 0; k < slotsPerBody; ++k) {
+        uint slot = id+k*rigidbodyCount;
+        if (manifolds[slot].numContacts != 0)
+            scratch[candidateOffset()+id*65+1+count++] = int(manifolds[slot].force.bodyB);
+    }
+    vec3 halfExtent = extent(id);
+    ivec3 cell = ivec3(floor(rigids[id].positionLin/cellSize));
+    for (int z = -1; z <= 1; ++z)
+    for (int y = -1; y <= 1; ++y)
+    for (int x = -1; x <= 1; ++x) {
+        ivec3 target = cell+ivec3(x,y,z);
+        for (int other = scratch[hashCell(target)]; other >= 0; other = scratch[nextOffset()+other]) {
+            if (all(equal(ivec3(floor(rigids[other].positionLin/cellSize)),target))) append(id,uint(other),halfExtent,count);
+        }
+    }
+    for (uint k = 0; k < staticCount; ++k) append(id,uint(scratch[staticOffset()+k]),halfExtent,count);
+    scratch[candidateOffset()+id*65] = int(count);
+}
