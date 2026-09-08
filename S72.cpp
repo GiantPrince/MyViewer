@@ -472,6 +472,7 @@ S72 S72::load(std::string const& scene_file) {
 					throw std::runtime_error("Node \"" + name + "\"'s rigidbody should be a string.");
 				}
 				node.rigidbody = &s72.rigidbodies[ref];
+				object.erase(f);
 			}
 
 		}

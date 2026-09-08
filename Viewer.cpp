@@ -2054,15 +2054,16 @@ void Viewer::compute_shadow_maps(Workspace& workspace)
 		);
 
 		for (ObjectInstance const& inst : object_instances) {
+			if (!inst.instance_count) continue;
 			uint32_t index = uint32_t(&inst - &object_instances[0]);
 			if (!rtg.configuration.indexed) {
-				vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+				vkCmdDraw(workspace.command_buffer, inst.vertices.count, inst.instance_count, inst.vertices.first, index);
 			}
 			else {
 				vkCmdDrawIndexed(
 					workspace.command_buffer,
 					inst.vertices.count,
-					1,
+					inst.instance_count,
 					inst.vertices.first,
 					0,
 					index
@@ -2741,7 +2742,8 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 
 
 			for (ObjectInstance const& inst : object_instances) {
-				uint32_t index = uint32_t(&inst - &object_instances[0]);
+				if (!inst.instance_count) continue;
+			uint32_t index = uint32_t(&inst - &object_instances[0]);
 				if (inst.texture_type == ObjectInstance::Type::ALBEDO) {
 					if (!rtg.scene.environments.empty()) {
 						continue;
@@ -2758,13 +2760,13 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 					);
 
 					if (!rtg.configuration.indexed) {
-						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+						vkCmdDraw(workspace.command_buffer, inst.vertices.count, inst.instance_count, inst.vertices.first, index);
 					}
 					else {
 						vkCmdDrawIndexed(
 							workspace.command_buffer,
 							inst.vertices.count,
-							1,
+							inst.instance_count,
 							inst.vertices.first,
 							0,
 							index
@@ -2776,7 +2778,8 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.env_handle);
 
 			for (ObjectInstance const& inst : object_instances) {
-				uint32_t index = uint32_t(&inst - &object_instances[0]);
+				if (!inst.instance_count) continue;
+			uint32_t index = uint32_t(&inst - &object_instances[0]);
 				if (inst.texture_type == ObjectInstance::Type::ENV) {
 					std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[env_texture_index], texture_descriptors[inst.normal_map] };
 
@@ -2790,13 +2793,13 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 					);
 
 					if (!rtg.configuration.indexed) {
-						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+						vkCmdDraw(workspace.command_buffer, inst.vertices.count, inst.instance_count, inst.vertices.first, index);
 					}
 					else {
 						vkCmdDrawIndexed(
 							workspace.command_buffer,
 							inst.vertices.count,
-							1,
+							inst.instance_count,
 							inst.vertices.first,
 							0,
 							index
@@ -2808,7 +2811,8 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.mirror_handle);
 
 			for (ObjectInstance const& inst : object_instances) {
-				uint32_t index = uint32_t(&inst - &object_instances[0]);
+				if (!inst.instance_count) continue;
+			uint32_t index = uint32_t(&inst - &object_instances[0]);
 				if (inst.texture_type == ObjectInstance::Type::MIRROR) {
 					std::array<VkDescriptorSet, 4> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[env_texture_index], texture_descriptors[inst.normal_map] };
 
@@ -2822,13 +2826,13 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 					);
 
 					if (!rtg.configuration.indexed) {
-						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+						vkCmdDraw(workspace.command_buffer, inst.vertices.count, inst.instance_count, inst.vertices.first, index);
 					}
 					else {
 						vkCmdDrawIndexed(
 							workspace.command_buffer,
 							inst.vertices.count,
-							1,
+							inst.instance_count,
 							inst.vertices.first,
 							0,
 							index
@@ -2840,7 +2844,8 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.lambertian_env_handle);
 
 			for (ObjectInstance const& inst : object_instances) {
-				uint32_t index = uint32_t(&inst - &object_instances[0]);
+				if (!inst.instance_count) continue;
+			uint32_t index = uint32_t(&inst - &object_instances[0]);
 				if (inst.texture_type == ObjectInstance::Type::ALBEDO) {
 					if (rtg.scene.environments.empty()) {
 						continue;
@@ -2857,13 +2862,13 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 					);
 
 					if (!rtg.configuration.indexed) {
-						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+						vkCmdDraw(workspace.command_buffer, inst.vertices.count, inst.instance_count, inst.vertices.first, index);
 					}
 					else {
 						vkCmdDrawIndexed(
 							workspace.command_buffer,
 							inst.vertices.count,
-							1,
+							inst.instance_count,
 							inst.vertices.first,
 							0,
 							index
@@ -2875,7 +2880,8 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.pbr_handle);
 
 			for (ObjectInstance const& inst : object_instances) {
-				uint32_t index = uint32_t(&inst - &object_instances[0]);
+				if (!inst.instance_count) continue;
+			uint32_t index = uint32_t(&inst - &object_instances[0]);
 				if (inst.texture_type == ObjectInstance::Type::PBR) {
 					std::array<VkDescriptorSet, 8> descriptor_sets{ texture_descriptors[inst.texture], workspace.Camera_descriptors, texture_descriptors[lambertian_texture_index], texture_descriptors[inst.normal_map], texture_descriptors[inst.roughness_map], texture_descriptors[inst.metalness_map], texture_descriptors[env_texture_index], texture_descriptors[lut_texture_index] };
 
@@ -2889,13 +2895,13 @@ void Viewer::render(RTG& rtg_, RTG::RenderParams const& render_params) {
 					);
 
 					if (!rtg.configuration.indexed) {
-						vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+						vkCmdDraw(workspace.command_buffer, inst.vertices.count, inst.instance_count, inst.vertices.first, index);
 					}
 					else {
 						vkCmdDrawIndexed(
 							workspace.command_buffer,
 							inst.vertices.count,
-							1,
+							inst.instance_count,
 							inst.vertices.first,
 							0,
 							index
@@ -3300,6 +3306,23 @@ void Viewer::load_objects() {
 		}
 
 	}
+	// Preserve transform indices while batching consecutive compatible instances.
+	for (size_t first = 0; first < object_instances.size();) {
+		auto& a = object_instances[first];
+		size_t end = first + 1;
+		while (end < object_instances.size()) {
+			auto& b = object_instances[end];
+			if (a.vertices.first != b.vertices.first || a.vertices.count != b.vertices.count ||
+				a.texture_type != b.texture_type || a.texture != b.texture ||
+				a.normal_map != b.normal_map || a.metalness_map != b.metalness_map ||
+				a.roughness_map != b.roughness_map) break;
+			b.instance_count = 0;
+			++end;
+		}
+		a.instance_count = uint32_t(end - first);
+		first = end;
+	}
+
 }
 
 void Viewer::load_objects(const S72::Node* node_root, const mat4& node_world_from_local, const mat4& node_world_from_local_normal) {
@@ -3842,6 +3865,7 @@ void Viewer::render_mesh(const S72::Mesh& mesh, const mat4& world_from_local, co
 
 void Viewer::render_box(const mat4& world_from_local, float extent_x, float extent_y, float extent_z)
 {
+	if (!rtg.configuration.show_colliders) return;
 	extent_x /= 2;
 	extent_y /= 2;
 	extent_z /= 2;
@@ -3878,6 +3902,7 @@ void Viewer::render_box(const mat4& world_from_local, float extent_x, float exte
 
 void Viewer::render_sphere(const mat4& world_from_local, float radius)
 {
+	if (!rtg.configuration.show_colliders) return;
 	const int numSegments = 20;
 	const float delta = 2 * float(M_PI) / numSegments;
 	vec4 origin = world_from_local * vec4{ 0, 0, 0, 1 };

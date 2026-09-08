@@ -358,6 +358,7 @@ struct Viewer : RTG::Application {
 		uint32_t normal_map = 1;
 		uint32_t metalness_map = 0;
 		uint32_t roughness_map = 0;
+		uint32_t instance_count = 1;
 	};
 	std::vector<ObjectInstance> object_instances;
 
